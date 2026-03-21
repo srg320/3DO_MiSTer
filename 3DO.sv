@@ -673,7 +673,7 @@ module emu
 		.init(status[0]),
 		.sync(MCLK_CE),
 	
-		.addr({2'b00,~RRAS3_N,RA[19:2]}),
+		.addr({1'b0,~RRAS3_N,RA[19:11],1'b0,RA[10:2]}),
 		.wr  (!RRAS2_N || !RRAS3_N ? RCODE[0]  : 1'b0),
 		.rd  (!RRAS2_N || !RRAS3_N ? ~RCODE[0] : 1'b0),
 		.we  (!RRAS2_N || !RRAS3_N ? ~RWE_N    : 2'b00),
