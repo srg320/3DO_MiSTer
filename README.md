@@ -9,11 +9,17 @@
 Current status is WIP/Beta
 
 Known issues:
+
 -Dragon Lore - The Legend Begins (US,EU): sound glitch
+
 -MegaRace (US): sound echo
+
 -Olympic Soccer (US): polygon glitch (vertically crossed polygons)
+
 -Road & Track Presents - The Need for Speed (US,EU): slowdown
+
 -Total Eclipse (US): polygon glitch
+
 
 Some games have popping and noise.
 
