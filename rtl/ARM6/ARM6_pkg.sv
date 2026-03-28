@@ -18,8 +18,9 @@ package ARM6_PKG;
 		ALUT_NOP = 3'b000, 
 		ALUT_ADD = 3'b001, 
 		ALUT_LOG = 3'b010,
-		ALUT_A   = 3'b011,
-		ALUT_B   = 3'b100
+		ALUT_MUL = 3'b011,
+		ALUT_A   = 3'b100,
+		ALUT_B   = 3'b101
 	} ALUType_t; 
 
 	typedef enum bit[2:0] {
@@ -495,7 +496,7 @@ package ARM6_PKG;
 				
 			CYC_MUL_EXEC: begin
 				DECI.DPCTL = {1'b0, 1'b0, IMM_ZERO, SHFT_NONE, MUL_EXE, 1'b0, 1'b1};
-				DECI.ALU = {ALUT_ADD, 4'b0000};
+				DECI.ALU = {ALUT_MUL, 4'b0000};
 				DECI.RCTL = {IC[19:16], Rm, IC[19:16], 1'b1, 1'b1, 1'b0, 1'b0, 1'b0};
 				DECI.PSRCTL = IC[20] ? PSRC_FLG : PSRC_NOP;
 				DECI.MCTL = {ADR_PC, 1'b0, 1'b0, 1'b0};
