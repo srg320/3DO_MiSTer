@@ -56,6 +56,7 @@ module MADAM_CPUIF
 		end
 	end 
 	
+	wire        CPU_SPORT = (A >= 32'h03200000 && A <= 32'h032FFFFF);
 	wire        CPU_PB = AG_PBI && ~|A[31:24];
 	bit         STRETCH;
 	bit         BREAK;
@@ -79,6 +80,7 @@ module MADAM_CPUIF
 				
 				if (!GRANT && !BREAK) BREAK <= 1;
 				else if (GRANT && CPU_PB && !(ICYCLE && SEQ) && !STRETCH && !BREAK) BREAK <= 1;
+				else if (GRANT && CPU_SPORT && !STRETCH && !BREAK) STRETCH <= 1;
 				else if (GRANT) BREAK <= 0;
 			end
 		end
@@ -120,17 +122,7 @@ module MADAM_CPUIF
 	end 
 	assign READY = EXEC & ~LOCK & PHASE2;
 	
-	bit  [31: 0] A_FF;
-	bit          nRW_FF,nWB_FF;
-	always @(posedge CLK ) begin
-		if (PHASE1 && CE_R) begin
-			if (!ACCESS) A_FF <= A;
-			nRW_FF <= nRW;
-			nWB_FF <= nWB;
-		end
-	end
-	wire DMA_REG_SEL = (A_FF >= 32'h03300400 && A_FF <= 32'h033005FF);
-
+	wire DMA_REG_SEL = (A >= 32'h03300400 && A <= 32'h033005FF);
 	always_comb begin
 		AG_CTL = '0;
 		if (STRETCH || BREAK || ICYCLE) begin
@@ -169,6 +161,15 @@ module MADAM_CPUIF
 		end
 	end
 	
+	bit  [31: 0] A_FF;
+	bit          nRW_FF,nWB_FF;
+	always @(posedge CLK ) begin
+		if (PHASE1 && CE_R) begin
+			if (!ACCESS) A_FF <= A;
+			nRW_FF <= nRW;
+			nWB_FF <= nWB;
+		end
+	end
 	assign WE = ({~A_FF[1]&~A_FF[0],~A_FF[1]&A_FF[0],A_FF[1]&~A_FF[0],A_FF[1]&A_FF[0]} | {4{nWB_FF}}) & {4{~STRETCH&~BREAK&nRW_FF}};
 	
 	assign MCLK_PH1 = CPU_PH1 && GRANT && !STRETCH && !BREAK && !PAUSE;

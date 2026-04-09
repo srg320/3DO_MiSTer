@@ -182,6 +182,7 @@ module MADAM
 	bit          PLAYER_GRANT;
 	bit          PLAYER_REQ;
 	bit          PLAYER_INT;
+	bit          REFRESH_REQ;
 	
 	//SLOW BUS
 	bit          BOOT_ROM;
@@ -457,6 +458,7 @@ module MADAM
 		.SPORT_AG_CTL(SPORT_AG_CTL),
 		
 		.PLAYER_REQ(PLAYER_REQ),
+		.REFRESH_REQ(REFRESH_REQ),
 		.PLAYER_GRANT(PLAYER_GRANT),
 		.PLAYER_AG_CTL(PLAYER_AG_CTL),
 		
@@ -744,8 +746,10 @@ module MADAM
 		.H_CNT(H_CNT),
 		.V_CNT(V_CNT),
 		
-		.REQ(PLAYER_REQ),
-		.INT(PLAYER_INT),
+		.PLAY_REQ(PLAYER_REQ),
+		.PLAY_INT(PLAYER_INT),
+		
+		.REF_REQ(REFRESH_REQ),
 		
 		.PBDI(PBDIN),
 		.PBDO(PBDOUT),

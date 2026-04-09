@@ -141,7 +141,7 @@ module MADAM_SPORT
 					end
 				end
 				
-				if (HCOUNT == 11'd1290 - 1 && ALLOW && CLUTXEN) begin
+				if (HCOUNT == 11'd1290 - 11'd10 - 1 && ALLOW && CLUTXEN) begin
 					/*if (VZ) begin
 						LINE <= '0;
 					end else*/ if (LINE) begin
@@ -225,7 +225,7 @@ module MADAM_SPORT
 			VIDEO_CNT <= '0;
 		end else begin
 			if (EN && VCE) begin
-				if (HCOUNT == 11'd1490 - 1 && ENVIDDMA && VSCTXEN) begin
+				if (HCOUNT == 11'd1490 - 11'd20 - 1 && ENVIDDMA && VSCTXEN) begin
 					PEND <= 1;
 					VIDEO_TRANS_PEND <= 1;
 				end

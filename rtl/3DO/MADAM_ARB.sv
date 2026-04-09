@@ -54,6 +54,7 @@ module MADAM_ARB
 	
 	//PLAYER
 	input              PLAYER_REQ,
+	input              REFRESH_REQ,
 	output reg         PLAYER_GRANT,
 	input AddrGenCtl_t PLAYER_AG_CTL,
 		
@@ -74,7 +75,7 @@ module MADAM_ARB
 		end
 		else if (EN && CE_R) begin
 			if (BUS_ST == EXTP_PREINIT1 || BUS_ST == EXTP_PREINIT3 || 
-			    BUS_ST == PLAY_PREINIT1 || BUS_ST == PLAY_PREINIT3 || 
+			    BUS_ST == PLAY_PREINIT1 || BUS_ST == PLAY_PREINIT3 || BUS_ST == REF_PREINIT1 || 
 			    BUS_ST == CLUT_PREINIT1 || BUS_ST == VID_PREINIT1 || BUS_ST == VID_MIDPREINIT1 ||
 				 BUS_ST == SCOB_PREINIT1 || BUS_ST == SCOB_PREINIT3 || BUS_ST == SCOB_PREINIT5 || BUS_ST == SCOB_PREINIT7 ||
 				 BUS_ST == SPR_PREINIT1 || BUS_ST == SPR_PREINIT3) begin
@@ -87,7 +88,7 @@ module MADAM_ARB
 		end
 	end 
 	
-	wire HI_PRIO_REQ = VIDMID_REQ | CLUTWR_REQ | VIDOUT_REQ | /*REFRESH_REQ |*/ PLAYER_REQ | EXTP_REQ | SPRPAUS_REQ;
+	wire HI_PRIO_REQ = VIDMID_REQ | CLUTWR_REQ | VIDOUT_REQ | REFRESH_REQ | PLAYER_REQ | EXTP_REQ | SPRPAUS_REQ;
 	BusState_t  BUS_ST;
 	always @(posedge CLK or negedge RST_N) begin
 		bit         CPU_GRANT_INT,EXTP_GRANT_INT,SE_GRANT_INT,SPORT_GRANT_INT,PLAYER_GRANT_INT;
@@ -161,14 +162,17 @@ module MADAM_ARB
 						EXTP_GRANT_INT <= 0;
 						BUS_ST <= VID_PREINIT1;
 					end
-//					else if (REFRESH_REQ) begin	//priority 4
-//						
-//					end
+					else if (REFRESH_REQ) begin	//priority 4
+						PLAYER_GRANT_INT <= 1;
+						SE_GRANT_INT <= 0;
+						EXTP_GRANT_INT <= 0;
+						BUS_ST <= REF_PREINIT1;
+					end
 					else if (PLAYER_REQ) begin	//priority 5
 						PLAYER_GRANT_INT <= 1;
 						SE_GRANT_INT <= 0;
 						EXTP_GRANT_INT <= 0;
-						BUS_ST <= PLAY_PREINIT1;//PLAY_INIT0;
+						BUS_ST <= PLAY_PREINIT1;
 					end
 					else if (EXTP_REQ) begin	//priority 6
 						EXTP_ACK <= 1;
@@ -271,7 +275,7 @@ module MADAM_ARB
 				
 				//PLAYER
 				PLAY_PREINIT1: BUS_ST <= PLAY_INIT0;	
-				PLAY_INIT0: BUS_ST <= PLAY_INIT1;				
+				PLAY_INIT0: BUS_ST <= PLAY_INIT1;
 				PLAY_INIT1: BUS_ST <= PLAY_READ0;
 				PLAY_READ0: BUS_ST <= PLAY_READ1;
 				PLAY_READ1: BUS_ST <= PLAY_PREINIT3;
@@ -280,6 +284,18 @@ module MADAM_ARB
 				PLAY_INIT3: BUS_ST <= PLAY_WRITE0;
 				PLAY_WRITE0: BUS_ST <= PLAY_WRITE1;
 				PLAY_WRITE1: begin
+					PLAYER_GRANT_INT <= 0;
+					if (!SE_RUN) CPU_GRANT_INT <= 1;
+					BUS_ST <= BUS_IDLE;
+				end
+				
+				REF_PREINIT1: BUS_ST <= REF_INIT0;	
+				REF_INIT0: BUS_ST <= REF_INIT1;
+				REF_INIT1: BUS_ST <= REF_WRITE0;
+				REF_WRITE0: BUS_ST <= REF_WRITE1;
+				REF_WRITE1: BUS_ST <= REF_WRITE2;
+				REF_WRITE2: BUS_ST <= REF_WRITE3;
+				REF_WRITE3: begin
 					PLAYER_GRANT_INT <= 0;
 					if (!SE_RUN) CPU_GRANT_INT <= 1;
 					BUS_ST <= BUS_IDLE;
@@ -545,7 +561,7 @@ module MADAM_ARB
 						if (PBI) begin
 							BUS_PB_INT <= 1;
 							PB_NEXT_ST <= SCOB_PRE10;
-							BUS_ST <= SCOB_PREINIT3;
+							BUS_ST <= SCOB_PREINIT5;
 						end
 						else begin
 							BUS_ST <= SCOB_PRE10;
@@ -848,7 +864,9 @@ module MADAM_ARB
 			else if (BUS_ST == PLAY_PREINIT1 || BUS_ST == PLAY_INIT0 || BUS_ST == PLAY_INIT1 ||
 				BUS_ST == PLAY_READ0 || BUS_ST == PLAY_READ1 ||
 				BUS_ST == PLAY_PREINIT3 || BUS_ST == PLAY_INIT2 || BUS_ST == PLAY_INIT3 ||
-				BUS_ST == PLAY_WRITE0 || BUS_ST == PLAY_WRITE1) begin
+				BUS_ST == PLAY_WRITE0 || BUS_ST == PLAY_WRITE1 ||
+				BUS_ST == REF_PREINIT1 || BUS_ST == REF_INIT0 || BUS_ST == REF_INIT1 ||
+				BUS_ST == REF_WRITE0 || BUS_ST == REF_WRITE1 || BUS_ST == REF_WRITE2 || BUS_ST == REF_WRITE3) begin
 				DMA_CTL2 <= PLAYER_AG_CTL;
 			end
 		end

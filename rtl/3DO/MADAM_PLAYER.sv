@@ -22,8 +22,10 @@ module MADAM_PLAYER
 	input      [10: 0] H_CNT,
 	input      [ 9: 0] V_CNT,
 	
-	output reg         REQ,
-	output reg         INT,
+	output reg         PLAY_REQ,
+	output reg         PLAY_INT,
+	
+	output reg         REF_REQ,
 	
 	input              PBDI,
 	output             PBDO,
@@ -42,7 +44,7 @@ module MADAM_PLAYER
 		end
 	end 
 	
-	wire ACK = (BUS_STATE_FF == PLAY_INIT0);
+	wire PLAY_ACK = (BUS_STATE_FF == PLAY_INIT0);
 	
 	bit          SHIFT_STROBE,SHIFT_LAST;
 	bit  [ 4: 0] SHIFT_CNT;
@@ -52,8 +54,8 @@ module MADAM_PLAYER
 		
 		if (!RST_N) begin
 			PBCLK <= 0;
-			REQ <= 0;
-			INT <= 0;
+			PLAY_REQ <= 0;
+			PLAY_INT <= 0;
 			ENABLE <= 0;
 			START_PEND <= 0;
 			END_PEND <= 0;
@@ -99,7 +101,7 @@ module MADAM_PLAYER
 				if (START_PEND) begin
 					SHIFT_CNT <= '0;
 					SHIFT_LAST <= 0;
-					REQ <= 1;
+					PLAY_REQ <= 1;
 					START_PEND <= 0;
 				end
 				else if (SHIFT_PEND) begin
@@ -108,20 +110,20 @@ module MADAM_PLAYER
 					SHIFT_CNT <= SHIFT_CNT + 5'd1;
 					if (SHIFT_CNT == 5'd31) begin
 						SHIFT_LAST <= 1;
-						REQ <= 1;
+						PLAY_REQ <= 1;
 					end else begin
 						SHIFT_LAST <= 0;
 					end 
 					DBG_WAIT_CNT <= '0;
 				end
 				
-				if (REQ && ACK) begin
-					REQ <= 0;
+				if (PLAY_REQ && PLAY_ACK) begin
+					PLAY_REQ <= 0;
 				end
 			
-				INT <= 0;
+				PLAY_INT <= 0;
 				if (DATA_WR && DMA_REG_OVF) begin
-					INT <= 1;
+					PLAY_INT <= 1;
 					END_PEND <= 1;
 				end
 			end
@@ -146,6 +148,33 @@ module MADAM_PLAYER
 			end
 			if (OUT) begin
 				BUF_OUT <= SHF_REG;
+			end
+		end
+	end 
+	
+	wire REF_ACK = (BUS_STATE_FF == REF_INIT0);
+	always @(posedge CLK or negedge RST_N) begin
+		bit          REFRESH_PEND;
+		
+		if (!RST_N) begin
+			REF_REQ <= 0;
+			REFRESH_PEND <= 0;
+		end else begin
+			if (EN && VCE) begin
+				if (H_CNT == 11'd0 || H_CNT == 11'd400 - 1 || H_CNT == 11'd1200 - 1) begin
+					REFRESH_PEND <= 1;
+				end
+			end
+			
+			if (EN && CE_R) begin
+				if (REFRESH_PEND) begin
+					REF_REQ <= 1;
+					REFRESH_PEND <= 0;
+				end
+				
+				if (REF_REQ && REF_ACK) begin
+					REF_REQ <= 0;
+				end
 			end
 		end
 	end 
@@ -242,6 +271,51 @@ module MADAM_PLAYER
 				AG_CTL.DMA_REG_WRITE_EN = 1;
 				AG_CTL.DMA_ADDR_SEL = 1;
 				AG_CTL.DMA_ADDER_CTL = 4'b0001;
+			end
+			
+			REF_PREINIT1: begin
+				AG_CTL.DMA_GROUP_ADDR = 7'h5C;
+				AG_CTL.DMA_GROUP_ADDR_SEL = 1;
+				AG_CTL.DMA_GROUP_HOLD = 1;
+				AG_CTL.DMA_REG_READ_SEL = 1;
+				AG_CTL.DMA_REG_READ_CTL = 2'h3;
+				AG_CTL.DMA_ADDR_SEL = 1;
+				AG_CTL.DMA_ADDER_CTL = 4'b0000;
+			end
+			
+			REF_INIT0: begin
+				AG_CTL.DMA_REG_READ_SEL = 1;
+				AG_CTL.DMA_REG_READ_CTL = 2'h3;
+				AG_CTL.DMA_ADDR_SEL = 1;
+				AG_CTL.DMA_ADDER_CTL = 4'b0000;
+			end
+			
+			REF_INIT1: begin
+				AG_CTL.DMA_REG_READ_SEL = 1;
+				AG_CTL.DMA_REG_READ_CTL = 2'h3;
+				AG_CTL.DMA_ADDR_SEL = 1;
+				AG_CTL.DMA_ADDER_CTL = 4'b0000;
+			end
+			
+			REF_WRITE0,
+			REF_WRITE1,
+			REF_WRITE2: begin
+				AG_CTL.DMA_OWN_SEL = 1;
+				AG_CTL.DMA_REG_READ_SEL = 1;
+				AG_CTL.DMA_REG_READ_CTL = 2'h3;
+				AG_CTL.DMA_ADDR_SEL = 1;
+				AG_CTL.DMA_ADDER_CTL = 4'b0000;
+			end
+			
+			REF_WRITE3: begin
+				AG_CTL.DMA_OWN_SEL = 1;
+				AG_CTL.DMA_REG_READ_SEL = 1;
+				AG_CTL.DMA_REG_READ_CTL = 2'h3;
+				AG_CTL.DMA_REG_WRITE_SEL = 0;
+				AG_CTL.DMA_REG_WRITE_CTL = 3'h7;
+				AG_CTL.DMA_REG_WRITE_EN = 1;
+				AG_CTL.DMA_ADDR_SEL = 1;
+				AG_CTL.DMA_ADDER_CTL = 4'b0111;
 			end
 			
 			default:;
