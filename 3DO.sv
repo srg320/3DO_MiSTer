@@ -237,9 +237,9 @@ module emu
 		"P1O67,Composite Blend,Off,On,Adaptive;",
 	
 		"P2,Input;",
-		"P2O[34:32],Pad 1,Digital,Off;",
+		"P2O[34:32],Pad 1,Digital,Mouse,Flightstick,Off;",
 		"P2-;",
-		"P2O[37:35],Pad 2,Digital,Off;",
+		"d1P2O[37:35],Pad 2,Digital,Mouse,Flightstick,Off;",
 		"P2-;",
 
 //		"P3,Hardware;",
@@ -248,12 +248,12 @@ module emu
 		
 		"-;",
 		"R0,Reset;",
-		"J1,A,B,C,P,X,R,L;",
+		"J1,A,B,C,P,X,R,L,T;",
 		"V,v",`BUILD_DATE
 	};
 
 	wire [63:0] status;
-	wire [15:0] status_menumask = {~bk_ena};
+	wire [15:0] status_menumask = {14'd0, (status[34:32] == 3'd0), ~bk_ena};
 	
 	wire  [1:0] buttons;
 	wire [12:0] joystick_0,joystick_1,joystick_2,joystick_3,joystick_4;
@@ -646,9 +646,158 @@ module emu
 	
 	wire [ 2: 0] pad1_sel = status[34:32];
 	wire [ 2: 0] pad2_sel = status[37:35];
+	wire [ 2: 0] pad2_eff = (pad1_sel == 3'd0) ? pad2_sel : 3'd3;
+	wire         pad_latch;
 	
-	wire [31: 0] PAD12_DATA = {pad1_sel == 3'd0 ? joy0_data : 16'hFFFF,
-	                           pad2_sel == 3'd0 ? joy1_data : 16'hFFFF};
+	function automatic [7:0] stick_axis(input signed [7:0] axis);
+		reg signed [8:0] v;
+		begin
+			v = {axis[7],axis} + 9'd128;
+			stick_axis = v[7:0];
+		end
+	endfunction
+
+	function automatic signed [10:0] mouse_delta(input ovf, input sign, input [7:0] data);
+		begin
+			if (ovf) mouse_delta = sign ? -11'sd1024 : 11'sd1022;
+			else     mouse_delta = $signed({sign,sign,sign,data}) <<< 1;
+		end
+	endfunction
+
+	function automatic signed [10:0] mouse_limit(input signed [11:0] axis);
+		begin
+			if (axis > 12'sd1023) mouse_limit = 11'sd1023;
+			else if (axis < -12'sd1024) mouse_limit = -11'sd1024;
+			else mouse_limit = axis[10:0];
+		end
+	endfunction
+
+	function automatic signed [9:0] mouse_step(input signed [10:0] axis);
+		begin
+			if (axis > 11'sd96) mouse_step = 10'sd96;
+			else if (axis < -11'sd96) mouse_step = -10'sd96;
+			else mouse_step = axis[9:0];
+		end
+	endfunction
+	
+	wire [7:0] stick0_x = stick_axis($signed(joy0_x0));
+	wire [7:0] stick0_y = stick_axis($signed(joy0_y0));
+	wire [7:0] stick0_z = stick_axis($signed(joy0_y1));
+	wire [7:0] stick1_x = stick_axis($signed(joy1_x0));
+	wire [7:0] stick1_y = stick_axis($signed(joy1_y0));
+	wire [7:0] stick1_z = stick_axis($signed(joy1_y1));
+	
+	wire [7:0] mouse_flags = ps2_mouse[7:0];
+	wire       mouse_ena = (pad1_sel == 3'd1) || (pad2_eff == 3'd1);
+	wire signed [10:0] mouse_dx = mouse_delta(mouse_flags[6], mouse_flags[4], ps2_mouse[15:8]);
+	wire signed [10:0] mouse_dy = mouse_delta(mouse_flags[7], mouse_flags[5], ps2_mouse[23:16]);
+	
+	reg mouse_toggle = 0;
+	reg mouse_left = 0;
+	reg mouse_middle = 0;
+	reg mouse_right = 0;
+	reg signed [10:0] mouse_x_acc = '0;
+	reg signed [10:0] mouse_y_acc = '0;
+	wire signed [9:0] mouse_x = mouse_step(mouse_x_acc);
+	wire signed [9:0] mouse_y = mouse_step(mouse_y_acc);
+	always @(posedge clk_sys) begin
+		reg signed [11:0] x;
+		reg signed [11:0] y;
+
+		if (reset || !mouse_ena) begin
+			mouse_toggle <= ps2_mouse[24];
+			mouse_left <= 1'b0;
+			mouse_middle <= 1'b0;
+			mouse_right <= 1'b0;
+			mouse_x_acc <= '0;
+			mouse_y_acc <= '0;
+		end else begin
+			x = {mouse_x_acc[10],mouse_x_acc};
+			y = {mouse_y_acc[10],mouse_y_acc};
+
+			if (pad_latch) begin
+				x = x - $signed({{2{mouse_x[9]}},mouse_x});
+				y = y - $signed({{2{mouse_y[9]}},mouse_y});
+			end
+
+			if (ps2_mouse[24] != mouse_toggle) begin
+				mouse_toggle <= ps2_mouse[24];
+				mouse_left <= ps2_mouse[0];
+				mouse_middle <= ps2_mouse[2];
+				mouse_right <= ps2_mouse[1];
+				x = x + $signed({mouse_dx[10],mouse_dx});
+				y = y - $signed({mouse_dy[10],mouse_dy});
+			end
+
+			mouse_x_acc <= mouse_limit(x);
+			mouse_y_acc <= mouse_limit(y);
+		end
+	end
+	
+	wire [31:0] mouse_data = {
+		8'h49,
+		mouse_left,
+		mouse_middle,
+		mouse_right,
+		1'b0,
+		mouse_y[9:0],
+		mouse_x[9:0]
+	};
+	
+	wire [87:0] mouse_data_p = {
+		mouse_data,
+		56'hFFFFFFFFFFFFFF
+	};
+	
+	wire [87:0] pad_data = {
+		{pad1_sel == 3'd0 ? joy0_data : 16'hFFFF,
+		 pad2_eff == 3'd0 ? joy1_data : 16'hFFFF},
+		56'hFFFFFFFFFFFFFF
+	};
+	
+	wire [71:0] stick0_data = {
+		8'h01,
+		8'h7B,
+		8'h08,
+		stick0_x,
+		2'b00,
+		stick0_y,
+		2'b00,
+		stick0_z,
+		4'h2,
+		{joystick_0[11], joystick_0[4], joystick_0[5], joystick_0[6], joystick_0[3], joystick_0[2], joystick_0[0], joystick_0[1]},
+		{joystick_0[7], joystick_0[8], joystick_0[10], joystick_0[9], 4'b0000}
+	};
+	wire [71:0] stick1_data = {
+		8'h01,
+		8'h7B,
+		8'h08,
+		stick1_x,
+		2'b00,
+		stick1_y,
+		2'b00,
+		stick1_z,
+		4'h2,
+		{joystick_1[11], joystick_1[4], joystick_1[5], joystick_1[6], joystick_1[3], joystick_1[2], joystick_1[0], joystick_1[1]},
+		{joystick_1[7], joystick_1[8], joystick_1[10], joystick_1[9], 4'b0000}
+	};
+	wire [87:0] stick0_data_p = {
+		stick0_data,
+		16'hFFFF
+	};
+	wire [87:0] pad1_mouse_data = {
+		joy0_data,
+		mouse_data,
+		40'hFFFFFFFFFF
+	};
+	wire [87:0] pad1_stick_data = {joy0_data, stick1_data};
+	
+	wire [87:0] PAD12_DATA = 
+		(pad2_eff == 3'd1) ? pad1_mouse_data :
+		(pad2_eff == 3'd2) ? pad1_stick_data :
+		(pad1_sel == 3'd1) ? mouse_data_p :
+		(pad1_sel == 3'd2) ? stick0_data_p :
+		pad_data;
 	
 	HPS2PAD pad
 	(
@@ -663,6 +812,7 @@ module emu
 		
 		.EXPBDIN(1'b1),
 		.EXPBDOUT(),
+		.PAD_LATCH(pad_latch),
 	
 		.PAD_DATA(PAD12_DATA)
 	);
