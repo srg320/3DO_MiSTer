@@ -17,12 +17,17 @@ module sdram
 	input              clk,			// sdram is accessed at up to 128MHz
 	input              sync,			//
 
-	input      [22: 2] addr,
+	input      [22: 2] laddr,
+	input      [ 1: 0] lwe,
+	input              lras,
+	input      [ 3: 0] lcode,
+	input      [22: 2] raddr,
+	input      [ 1: 0] rwe,
+	input              rras,
+	input      [ 3: 0] rcode,
+	
 	input      [31: 0] din,
 	output     [31: 0] dout,
-	input      [ 3: 0] we,
-	input              ras,
-	input      [ 3: 0] code,
 	
 	input              rfs
 
@@ -48,7 +53,7 @@ module sdram
 );
 
 	localparam RASCAS_DELAY   = 3'd2; // tRCD=20ns -> 2 cycles
-	localparam BURST          = 3'd1; // 0=1, 1=2, 2=4, 3=8, 7=full page
+	localparam BURST          = 3'd0; // 0=1, 1=2, 2=4, 3=8, 7=full page
 	localparam ACCESS_TYPE    = 1'd0; // 0=sequential, 1=interleaved
 	localparam CAS_LATENCY    = 3'd2; // 2/3 allowed
 	localparam OP_MODE        = 2'd0; // only 0 (standard operation) allowed
@@ -132,13 +137,13 @@ module sdram
 				st_num <= 4'd1;
 			end
 			
-			ras_old <= ras;
+//			ras_old <= ras;
 			rfs_old <= rfs;
 		end
 	end
 	
 	always @(posedge clk) begin
-		reg page_opened = 0;
+		reg lpage_opened = 0,rpage_opened = 0;
 		
 `ifdef DEBUG
 		dbg_no_refresh <= dbg_no_refresh + 1'd1;
@@ -151,81 +156,79 @@ module sdram
 								                             CTRL_IDLE;
 			state[0].RFS <= 1;
 		end else begin
-			if (ras && code == 4'hA) begin
-				case (st_num[2:0])
-				3'd5 : begin state[0].CMD  <= CTRL_RAS;
-							 	 state[0].ADDR <= {addr,1'b0};
-				             state[0].BANK <= 2'd0; end
-				default:;
-				endcase
-				page_opened <= 1;
+			if (lras && lcode == 4'h8 && st_num[2:0] == 3'd5) begin
+				state[0].CMD  <= CTRL_RAS;
+				state[0].ADDR <= {laddr,1'b0};
+				state[0].BANK <= 2'd0;
+				lpage_opened <= 1;
 `ifdef DEBUG
 				dbg_cross_page <= 0;
-				dbg_open_page <= addr[21:11];
+				dbg_open_page <= laddr[21:11];
 `endif
 			end
-			else if (ras && code == 4'h0) begin
-				case (st_num[2:0])
-				3'd0 : begin state[0].CMD  <= CTRL_CAS;
-								 state[0].ADDR <= {addr,1'b0};
-								 state[0].RD   <= 1;
-								 state[0].BANK <= 2'd0; end
-				default:;
-				endcase
+			if (rras && rcode == 4'h8 && st_num[2:0] == 3'd6) begin
+				state[0].CMD  <= CTRL_RAS;
+				state[0].ADDR <= {raddr,1'b0};
+				state[0].BANK <= 2'd1;
+				rpage_opened <= 1;
 			end
-			else if (ras && code == 4'h2) begin
+			
+			if (lras && lcode == 4'h1 && st_num[2:0] == 3'd0) begin
+				state[0].CMD  <= CTRL_CAS;
+				state[0].ADDR <= {laddr,1'b0};
+				state[0].RD   <= 1;
+				state[0].BANK <= 2'd0;
 `ifdef DEBUG
-				dbg_cross_page <= (dbg_open_page != addr[21:11]);
+				dbg_cross_page <= (dbg_open_page != laddr[21:11]);
 `endif
 			end
-			else if (ras && code == 4'h3) begin
-				case (st_num[2:0])
-				3'd4 : begin state[0].CMD  <= CTRL_CAS;
-								 state[0].ADDR <= {addr,1'b0};
-								 state[0].WE   <= 1;
-								 state[0].BE   <= we[3:2];
-								 state[0].DATA <= din[31:16];
-				             state[0].BANK <= 2'd0;  end
-				3'd5 : begin state[0].CMD  <= CTRL_CAS;
-								 state[0].ADDR <= {addr,1'b1};
-								 state[0].WE   <= 1;
-								 state[0].BE   <= we[1:0];
-								 state[0].DATA <= din[15:0];
-				             state[0].BANK <= 2'd0;  end
-				default:;
-				endcase
+			if (rras && rcode == 4'h1 && st_num[2:0] == 3'd1) begin
+				state[0].CMD  <= CTRL_CAS;
+				state[0].ADDR <= {raddr,1'b0};
+				state[0].RD   <= 1;
+				state[0].BANK <= 2'd1;
+			end
+			
+			if (lras && lcode == 4'h2 && (st_num[2:0] == 3'd2 || st_num[2:0] == 3'd6)) begin
+				state[0].CMD  <= CTRL_CAS;
+				state[0].ADDR <= {laddr,1'b0};
+				state[0].WE   <= 1;
+				state[0].BE   <= lwe;
+				state[0].DATA <= din[31:16];
+				state[0].BANK <= 2'd0;
 `ifdef DEBUG
-				dbg_cross_page <= (dbg_open_page != addr[21:11]);
+				dbg_cross_page <= (dbg_open_page != laddr[21:11]);
 `endif
 			end
-			else if (ras && (code == 4'h6 || code == 4'hE)) begin
-				case (st_num[2:0])
-				3'd4 : begin state[0].CMD  <= CTRL_RAS;
-								 state[0].BANK <= 2'd0;
-								 state[0].RFS  <= 1;  end
-				default:;
-				endcase
+			if (rras && rcode == 4'h2 && (st_num[2:0] == 3'd3 || st_num[2:0] == 3'd7)) begin
+				state[0].CMD  <= CTRL_CAS;
+				state[0].ADDR <= {raddr,1'b0};
+				state[0].WE   <= 1;
+				state[0].BE   <= rwe;
+				state[0].DATA <= din[15:0];
+				state[0].BANK <= 2'd1;
 			end
-//			else if (!ras && !ras_old && (code == 4'h2 || code == 4'h3)) begin
-//				case (st_num[2:0])
-//				3'd4 : begin state[0].CMD  <= CTRL_RAS;
-//								 state[0].BANK <= 2'd0;
-//								 state[0].RFS  <= 1;  end
-//				default:;
-//				endcase
-//			end
+			
+			if (lras && (lcode == 4'h4 || lcode == 4'hC) && st_num[2:0] == 3'd4) begin
+				state[0].CMD  <= CTRL_RAS;
+				state[0].BANK <= 2'd0;
+				state[0].RFS  <= 1;
+			end
 			else if ((rfs && !rfs_old) || (!rfs && rfs_old)) begin
-				             state[0].CMD  <= CTRL_RAS;
-								 state[0].BANK <= 2'd0;
-								 state[0].RFS  <= 1;  
+				state[0].CMD  <= CTRL_RAS;
+				state[0].BANK <= 2'd0;
+				state[0].RFS  <= 1;  
 			end
-			else if (!ras && ras_old && page_opened) begin
-				page_opened <= 0;
-				case (st_num[2:0])
-				3'd0 : begin state[0].CMD  <= CTRL_PRE;
-				             state[0].BANK <= 2'd0;  end
-				default:;
-				endcase
+			
+			if (!lras && lpage_opened && st_num[2:0] == 3'd0) begin
+				state[0].CMD  <= CTRL_PRE;
+				state[0].BANK <= 2'd0;
+				lpage_opened <= 0;
+			end
+			if (!rras && rpage_opened && st_num[2:0] == 3'd1) begin
+				state[0].CMD  <= CTRL_PRE;
+				state[0].BANK <= 2'd1;
+				rpage_opened <= 0;
 			end
 		end
 	end
@@ -273,7 +276,7 @@ module sdram
 	wire [15:0] d = ctrl_data;
 	wire  [1:0] dqm = ~ctrl_be;
 	always @(posedge clk) begin
-		if (ctrl_cmd == CTRL_RAS || ctrl_cmd == CTRL_CAS) SDRAM_BA <= (mode == MODE_NORMAL) ? ctrl_bank : 2'b00;
+		if (ctrl_cmd == CTRL_RAS || ctrl_cmd == CTRL_CAS || ctrl_cmd == CTRL_PRE) SDRAM_BA <= (mode == MODE_NORMAL) ? ctrl_bank : 2'b00;
 
 		casex({init_done,ctrl_rfs,ctrl_we,mode,ctrl_cmd})
 			{3'bX0X, MODE_NORMAL, CTRL_RAS}: {SDRAM_nRAS, SDRAM_nCAS, SDRAM_nWE, SDRAM_nCS} <= {CMD_ACTIVE,1'b0};
