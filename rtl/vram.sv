@@ -26,7 +26,9 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 	input  [31: 0] ESQ,
 	input          ESTE,
 	
-	input  [ 3: 0] BRAM_OFFS,
+	input  [ 3: 0] BRAM4_OFFS,
+	input  [ 3: 0] BRAM2_OFFS,
+	input  [ 3: 0] BRAM1_OFFS,
 	
 	output [ 7: 0] DBG_WAIT_CNT
 );
@@ -34,8 +36,9 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 	bit  [17: 0] A_FF;
 	bit  [15: 0] D_FF;
 	
-	wire         USE_INT_RAM1 = (A >= ({BRAM_OFFS+0,16'h0000}>>2) && A <= ({BRAM_OFFS+3,16'hFFFF}>>2)) && USE_BRAM;
-	wire         USE_INT_RAM2 = (A >= ({BRAM_OFFS+4,16'h0000}>>2) && A <= ({BRAM_OFFS+5,16'hBFFF}>>2)) || (A >= (20'hFC000>>2));
+	wire         USE_INT_RAM4 = (A >= ({BRAM4_OFFS+0,16'h0000}>>2) && A <= ({BRAM4_OFFS+3,16'hFFFF}>>2)) && USE_BRAM;
+	wire         USE_INT_RAM2 = (A >= ({BRAM2_OFFS+0,16'h0000}>>2) && A <= ({BRAM2_OFFS+1,16'hFFFF}>>2)) && USE_BRAM;
+	wire         USE_INT_RAM1 = (A >= ({BRAM1_OFFS+0,16'h0000}>>2) && A <= ({BRAM1_OFFS+0,16'hBFFF}>>2)) || (A >= (20'hFC000>>2));
 
 	bit  [15: 0] MASK;
 	bit  [15: 0] COLOR;
@@ -89,7 +92,7 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 			RDY_OLD <= RDY;
 			if ((!RAS_N && RAS_N_OLD) || (RDY && !RDY_OLD)) begin
 				if (RT_EXEC || MWT_EXEC || FW_EXEC) begin
-					RDY <= 0;
+					if (!OE_N || !WE_N || DSF1 || !(USE_INT_RAM4 || USE_INT_RAM2 || USE_INT_RAM1)) RDY <= 0;
 				end else if (!OE_N && WE_N) begin
 					RT_PEND <= 1;
 				end else if (!OE_N && !WE_N /*&& !DSF1*/) begin
@@ -118,7 +121,7 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 					SOM <= 1;
 					SPLIT <= DSF1;
 					SREG_POS <= {A_FF[8:1],1'b0};
-					ISTE <= USE_INT_RAM1 | USE_INT_RAM2;
+					ISTE <= USE_INT_RAM4 | USE_INT_RAM2 | USE_INT_RAM1;
 				end
 				if (!DSF1) SR_RA <= A_FF[8:0];
 			end else if (MWT_PEND) begin
@@ -131,7 +134,7 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 				SOM <= 0;
 				SPLIT <= DSF1;
 				SREG_POS <= '0;
-				ISTE <= USE_INT_RAM1 | USE_INT_RAM2;
+				ISTE <= USE_INT_RAM4 | USE_INT_RAM2 | USE_INT_RAM1;
 			end else if (FW_PEND) begin
 				FW_PEND <= 0;
 				MEM_ROW <= A_FF[17:9];
@@ -145,7 +148,7 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 				FW_PEND2 <= 0;
 				if (FLASHWRITE) begin
 					FW_EXEC <= 1;
-					ISTE <= USE_INT_RAM1 | USE_INT_RAM2;
+					ISTE <= USE_INT_RAM4 | USE_INT_RAM2 | USE_INT_RAM1;
 				end
 				if (FW_OE_N) begin
 					if (LOAD && DSF1) COLOR <= D_FF;
@@ -198,29 +201,31 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 		WE_N_OLD <= &WE_N;
 	end
 	
-	wire         MEM1_SSEL = (ESADDR >= ({BRAM_OFFS+0,16'h0000}>>2) && ESADDR <= ({BRAM_OFFS+3,16'hFFFF}>>2)) && USE_BRAM;
-	wire         MEM2_SSEL = (ESADDR >= ({BRAM_OFFS+4,16'h0000}>>2) && ESADDR <= ({BRAM_OFFS+5,16'hBFFF}>>2)) || (ESADDR >= (20'hFC000>>2));
+	wire         MEM4_SSEL = (ESADDR >= ({BRAM4_OFFS+0,16'h0000}>>2) && ESADDR <= ({BRAM4_OFFS+3,16'hFFFF}>>2)) && USE_BRAM;
+	wire         MEM2_SSEL = (ESADDR >= ({BRAM2_OFFS+0,16'h0000}>>2) && ESADDR <= ({BRAM2_OFFS+1,16'hFFFF}>>2)) && USE_BRAM;
+	wire         MEM1_SSEL = (ESADDR >= ({BRAM1_OFFS+0,16'h0000}>>2) && ESADDR <= ({BRAM1_OFFS+0,16'hBFFF}>>2)) || (ESADDR >= (20'hFC000>>2));
 	
 	wire [15: 4] MEM_SWADDR = ESADDR[15:4];
 	wire[255: 0] MEM_SDATA = FW_EXEC ? {16{COLOR}} : {SR_Q[239:224],SR_Q[255:240],SR_Q[207:192],SR_Q[223:208],SR_Q[175:160],SR_Q[191:176],SR_Q[143:128],SR_Q[159:144],SR_Q[111:96],SR_Q[127:112],SR_Q[79:64],SR_Q[95:80],SR_Q[47:32],SR_Q[63:48],SR_Q[15:0],SR_Q[31:16]};//SR_Q;
-	wire         MEM1_SWREN = (MWT_EXEC | FW_EXEC) & MEM1_SSEL & ISTE;
+	wire         MEM4_SWREN = (MWT_EXEC | FW_EXEC) & MEM4_SSEL & ISTE;
 	wire         MEM2_SWREN = (MWT_EXEC | FW_EXEC) & MEM2_SSEL & ISTE;
+	wire         MEM1_SWREN = (MWT_EXEC | FW_EXEC) & MEM1_SSEL & ISTE;
 	
-	bit  [15: 0] MEM1_Q;
-	bit [255: 0] MEM1_SQ;
-	VRAM_MEM #(16) mem1
+	bit  [15: 0] MEM4_Q;
+	bit [255: 0] MEM4_SQ;
+	VRAM_MEM #(16) mem4
 	(
 		.CLK(CLK),
 		.ADDR(A[15:0]),
 		.DATA(D),
-		.WREN(~WE_N & {2{~RAS_N&~RAS_N_OLD&WE_N_OLD&USE_INT_RAM1}}),
-		.Q(MEM1_Q),
+		.WREN(~WE_N & {2{~RAS_N&~RAS_N_OLD&WE_N_OLD&USE_INT_RAM4}}),
+		.Q(MEM4_Q),
 		
 		.SCLK(CLK_MEM),
 		.SADDR(MEM_SWADDR[15:4]),
 		.SDATA(MEM_SDATA),
-		.SWREN(MEM1_SWREN),
-		.SQ(MEM1_SQ)
+		.SWREN(MEM4_SWREN),
+		.SQ(MEM4_SQ)
 	);
 	
 	bit  [15: 0] MEM2_Q;
@@ -239,18 +244,37 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 		.SWREN(MEM2_SWREN),
 		.SQ(MEM2_SQ)
 	);
-	assign Q = USE_INT_RAM1 ? MEM1_Q : USE_INT_RAM2 ? MEM2_Q : EQ;
+	
+	bit  [15: 0] MEM1_Q;
+	bit [255: 0] MEM1_SQ;
+	VRAM_MEM #(14) mem1
+	(
+		.CLK(CLK),
+		.ADDR(A[13:0]),
+		.DATA(D),
+		.WREN(~WE_N & {2{~RAS_N&~RAS_N_OLD&WE_N_OLD&USE_INT_RAM1}}),
+		.Q(MEM1_Q),
+		
+		.SCLK(CLK_MEM),
+		.SADDR(MEM_SWADDR[13:4]),
+		.SDATA(MEM_SDATA),
+		.SWREN(MEM1_SWREN),
+		.SQ(MEM1_SQ)
+	);
+	assign Q = USE_INT_RAM4 ? MEM4_Q : USE_INT_RAM2 ? MEM2_Q : USE_INT_RAM1 ? MEM1_Q : EQ;
 
 	bit          ISTE_DELAYED;
-	bit          MEM1_SQ_SEL;
+	bit          MEM4_SQ_SEL,MEM2_SQ_SEL;
 	always @(posedge CLK_MEM) begin
 		ISTE_DELAYED <= ISTE;
-		MEM1_SQ_SEL <= MEM1_SSEL;
+		MEM4_SQ_SEL <= MEM4_SSEL;
+		MEM2_SQ_SEL <= MEM2_SSEL;
 	end
 	
 	wire [ 8: 1] SR_RADDR = MWT_EXEC ? SREG_POS[8:1] : SR_RA[8:1];
-	wire[255: 0] MEM_SQ = !MEM1_SQ_SEL ? {MEM2_SQ[239:224],MEM2_SQ[255:240],MEM2_SQ[207:192],MEM2_SQ[223:208],MEM2_SQ[175:160],MEM2_SQ[191:176],MEM2_SQ[143:128],MEM2_SQ[159:144],MEM2_SQ[111:96],MEM2_SQ[127:112],MEM2_SQ[79:64],MEM2_SQ[95:80],MEM2_SQ[47:32],MEM2_SQ[63:48],MEM2_SQ[15:0],MEM2_SQ[31:16]} :
-	                                     {MEM1_SQ[239:224],MEM1_SQ[255:240],MEM1_SQ[207:192],MEM1_SQ[223:208],MEM1_SQ[175:160],MEM1_SQ[191:176],MEM1_SQ[143:128],MEM1_SQ[159:144],MEM1_SQ[111:96],MEM1_SQ[127:112],MEM1_SQ[79:64],MEM1_SQ[95:80],MEM1_SQ[47:32],MEM1_SQ[63:48],MEM1_SQ[15:0],MEM1_SQ[31:16]};
+	wire[255: 0] MEM_SQ = MEM4_SQ_SEL ? {MEM4_SQ[239:224],MEM4_SQ[255:240],MEM4_SQ[207:192],MEM4_SQ[223:208],MEM4_SQ[175:160],MEM4_SQ[191:176],MEM4_SQ[143:128],MEM4_SQ[159:144],MEM4_SQ[111:96],MEM4_SQ[127:112],MEM4_SQ[79:64],MEM4_SQ[95:80],MEM4_SQ[47:32],MEM4_SQ[63:48],MEM4_SQ[15:0],MEM4_SQ[31:16]} :
+	                      MEM2_SQ_SEL ? {MEM2_SQ[239:224],MEM2_SQ[255:240],MEM2_SQ[207:192],MEM2_SQ[223:208],MEM2_SQ[175:160],MEM2_SQ[191:176],MEM2_SQ[143:128],MEM2_SQ[159:144],MEM2_SQ[111:96],MEM2_SQ[127:112],MEM2_SQ[79:64],MEM2_SQ[95:80],MEM2_SQ[47:32],MEM2_SQ[63:48],MEM2_SQ[15:0],MEM2_SQ[31:16]} :
+	                                    {MEM1_SQ[239:224],MEM1_SQ[255:240],MEM1_SQ[207:192],MEM1_SQ[223:208],MEM1_SQ[175:160],MEM1_SQ[191:176],MEM1_SQ[143:128],MEM1_SQ[159:144],MEM1_SQ[111:96],MEM1_SQ[127:112],MEM1_SQ[79:64],MEM1_SQ[95:80],MEM1_SQ[47:32],MEM1_SQ[63:48],MEM1_SQ[15:0],MEM1_SQ[31:16]};
 	VRAM_SHIFTREG #(9) shiftreg
 	(
 		.CLK(CLK_MEM),

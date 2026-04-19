@@ -497,6 +497,7 @@ module emu
 	/*Frambuffer position in games:
 	3D Atlas (US): 0x2CC000
 	Alone in the Dark (US): 0x248800
+	Blade Force (US): 0x200000/0x225800/0x24B000
 	Cannon Fodder (US): 0x2AE800/0x2D2800
 	Casper (US): 0x200000/0x225800/0x24B000
 	DeathKeep (US): 0x250000/0x278000 (FMV only)
@@ -506,14 +507,17 @@ module emu
 	Quarantine (US): 0x274BA4
 	Road & Track Presents - The Need for Speed (US, EU): 0x2AD000/0x2D3000
 	Seal of the Pharaoh (US): 0x270800/0x296000
+	Bodyconscious Digital Rave! Part 1 - Shinjuku & Takasaki (Japan): 0x24B000
 	Live! 3DO Magazine CD-ROM 1 (Japan): 0x280000/0x2A5800
 	Pretty Soldier SailorMoon S (Japan): 0x24C000 (FMV only)
 	Most others: 0x200000/0x225800
 	*/
 	
-	//FPGA has enough BRAM to replace 0x60000 bytes (out of 0x100000 bytes) of VRAM. 
-	//Of these, 0x5C000 bytes start at BRAM_OFFS*0x10000, while the remaining 0x4000 bytes always start at offset 0xFC000 (VDL). 
-	reg  [ 3: 0] BRAM_OFFS;
+	//FPGA has enough BRAM to replace 0x70000 bytes (out of 0x100000 bytes) of VRAM.  
+	//Of these, 0x6C000 bytes start at BRAM_OFFS*0x10000, while the remaining 0x4000 bytes always start at offset 0xFC000 (VDL). 
+	reg  [ 3: 0] BRAM4_OFFS;//Block 0x40000
+	reg  [ 3: 0] BRAM2_OFFS;//Block 0x20000
+	reg  [ 3: 0] BRAM1_OFFS;//Block 0x10000
 	reg          NEED_DSP_PAUSE;
 	always @(posedge clk_sys) begin
 		reg [31: 0] msf,id;
@@ -533,17 +537,19 @@ module emu
 				id[15:0] <= {ioctl_data[7:0],ioctl_data[15:8]};
 			end 
 			if (ioctl_addr == 25'h480) begin
-				BRAM_OFFS <= 4'h0;
+				{BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h0,4'h4,4'h6};
 				NEED_DSP_PAUSE <= 0;
-				if (id == 32'h29E4D882) BRAM_OFFS <= 4'hA;//3D Atlas (US)
-				if (id == 32'h274E924C) BRAM_OFFS <= 4'h2;//Alone in the Dark (US)
-				if (id == 32'h0340842C) BRAM_OFFS <= 4'hA;//Cannon Fodder (US)
-				if (id == 32'h2D731C98) BRAM_OFFS <= 4'hA;//FIFA International Soccer (US, Korea)
-				if (id == 32'h2584F855) BRAM_OFFS <= 4'h8;//Psychic Detective (US) (Disc 1)
-				if (id == 32'h031BED09) BRAM_OFFS <= 4'h6;//Quarantine (US)
-				if (id == 32'h06DE0DC2) BRAM_OFFS <= 4'hA;//Road & Track Presents - The Need for Speed (US, EU)
-				if (id == 32'h2D95DCB6) BRAM_OFFS <= 4'h6;//Seal of the Pharaoh (US)
-				if (id == 32'h213128DD) BRAM_OFFS <= 4'h8;//Live! 3DO Magazine CD-ROM 1 (Japan)
+				if (id == 32'h29E4D882) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'hC,4'hA,4'h9};//3D Atlas (US)
+				if (id == 32'h274E924C) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h4,4'h2,4'h8};//Alone in the Dark (US)
+				if (id == 32'h0340842C) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'hC,4'hA,4'h9};//Cannon Fodder (US)
+				if (id == 32'h2D731C98) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'hC,4'hA,4'h9};//FIFA International Soccer (US, Korea)
+				if (id == 32'h2584F855) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h8,4'hC,4'hE};//Psychic Detective (US) (Disc 1)
+				if (id == 32'h031BED09) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h8,4'h6,4'hC};//Quarantine (US)
+				if (id == 32'h06DE0DC2) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'hC,4'hA,4'h9};//Road & Track Presents - The Need for Speed (US, EU)
+				if (id == 32'h2D95DCB6) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h8,4'h6,4'hC};//Seal of the Pharaoh (US)
+				if (id == 32'h07732394) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h0,4'h6,4'h4};//Space Hulk - Vengeance of the Blood Angels (US)
+				if (id == 32'h0387DF78) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h4,4'h8,4'hA};//Bodyconscious Digital Rave! Part 1 - Shinjuku & Takasaki (Japan)
+				if (id == 32'h213128DD) {BRAM4_OFFS,BRAM2_OFFS,BRAM1_OFFS} <= {4'h8,4'hC,4'hE};//Live! 3DO Magazine CD-ROM 1 (Japan)
 				
 				if (id == 32'h25609184                       ) NEED_DSP_PAUSE <= 1;//Blade Force (US)
 				if (id == 32'h043DCD69 && msf == 32'h69026900) NEED_DSP_PAUSE <= 1;//Decathlon (US) (Unl)
@@ -872,7 +878,9 @@ module emu
 		.ESQ({ddr_bout[63:48],ddr_bout[31:16]}),
 		.ESTE(ddr_blte),
 		
-		.BRAM_OFFS(BRAM_OFFS)
+		.BRAM4_OFFS(BRAM4_OFFS),
+		.BRAM2_OFFS(BRAM2_OFFS),
+		.BRAM1_OFFS(BRAM1_OFFS)
 	);
 	
 	bit  [31: 0] vram_brdata;
@@ -906,16 +914,26 @@ module emu
 		.ESQ({ddr_bout[47:32],ddr_bout[15:0]}),
 		.ESTE(ddr_brte),
 		
-		.BRAM_OFFS(BRAM_OFFS)
+		.BRAM4_OFFS(BRAM4_OFFS),
+		.BRAM2_OFFS(BRAM2_OFFS),
+		.BRAM1_OFFS(BRAM1_OFFS)
 	);
 	
 	assign RAM_DI = !LRAS0_N || !RRAS0_N ? VRAM_Q : sdr_dout;
-	assign PDI = !SRAMR_N ? {24'h000000,NVRAM_Q} : ddr_io_do;
+	assign PDI = !SRAMR_N ? (ddr_io_do>>{~PA[3:2],3'b000}) & 32'h000000FF : ddr_io_do;
 
 	
 	//DDRAM
 	wire [31: 0] ddr_io_do;
 	wire         ddr_io_busy;
+	reg          ioctl_wr_delayed;
+	always @(posedge clk_sys) begin
+		ioctl_wr_delayed <= ioctl_wr;
+	end
+	
+	wire [15: 0] ddr_nvram_do;
+	wire         ddr_nvram_busy;
+	
 	wire [31: 0] ddr_do;
 	wire         ddr_busy;
 	wire [17: 0] ddr_bladdr,ddr_braddr;
@@ -925,8 +943,13 @@ module emu
 	wire [63: 0] ddr_bout;
 	wire         ddr_blte,ddr_brte;
 	wire         ddr_bbusy;
-	wire         ddr_luse = ~((LA[19:2] >= (`USE_BRAM_BLOCKS_FOR_VRAM ? ({BRAM_OFFS+0,16'h0000}>>2) : ({BRAM_OFFS+4,16'h0000}>>2)) && LA[19:2] <= ({BRAM_OFFS+5,16'hBFFF}>>2)) || (LA[19:2] >= (20'hFC000>>2)));
-	wire         ddr_ruse = ~((RA[19:2] >= (`USE_BRAM_BLOCKS_FOR_VRAM ? ({BRAM_OFFS+0,16'h0000}>>2) : ({BRAM_OFFS+4,16'h0000}>>2)) && RA[19:2] <= ({BRAM_OFFS+5,16'hBFFF}>>2)) || (RA[19:2] >= (20'hFC000>>2)));
+	
+	reg          ddr_luse,ddr_ruse;
+	always @(posedge clk_mem) begin
+		ddr_luse <= ~((`USE_BRAM_BLOCKS_FOR_VRAM && LA[19:2] >= ({BRAM4_OFFS+0,16'h0000}>>2) && LA[19:2] <= ({BRAM4_OFFS+3,16'hFFFF}>>2)) || (`USE_BRAM_BLOCKS_FOR_VRAM && LA[19:2] >= ({BRAM2_OFFS+0,16'h0000}>>2) && LA[19:2] <= ({BRAM2_OFFS+1,16'hFFFF}>>2)) || (LA[19:2] >= ({BRAM1_OFFS+0,16'h0000}>>2) && LA[19:2] <= ({BRAM1_OFFS+0,16'hBFFF}>>2)) || (LA[19:2] >= (20'hFC000>>2)));
+		ddr_ruse <= ~((`USE_BRAM_BLOCKS_FOR_VRAM && RA[19:2] >= ({BRAM4_OFFS+0,16'h0000}>>2) && RA[19:2] <= ({BRAM4_OFFS+3,16'hFFFF}>>2)) || (`USE_BRAM_BLOCKS_FOR_VRAM && RA[19:2] >= ({BRAM2_OFFS+0,16'h0000}>>2) && RA[19:2] <= ({BRAM2_OFFS+1,16'hFFFF}>>2)) || (RA[19:2] >= ({BRAM1_OFFS+0,16'h0000}>>2) && RA[19:2] <= ({BRAM1_OFFS+0,16'hBFFF}>>2)) || (RA[19:2] >= (20'hFC000>>2)));
+	end
+	
 	ddram ddram
 	(
 		.*,
@@ -934,12 +957,19 @@ module emu
 		.rst(mem_rst),
 	
 		//
-		.io_addr(bios_download || kanji_download ? {7'b0000001,kanji_download,ioctl_addr[19:2]} : {7'b0000001,ROM_SEL,PA[19:2]}),
-		.io_din (bios_download || kanji_download ? {2{ioctl_data[7:0],ioctl_data[15:8]}} : RAM_DO),
-		.io_we  (bios_download || kanji_download ? {~ioctl_addr[1],~ioctl_addr[1],ioctl_addr[1],ioctl_addr[1]}&{4{ioctl_wr}} : 4'b0000),
-		.io_rd  (bios_download || kanji_download ? 1'b0 : ~ROMCS_N&MCLK_CE),
+		.io_addr(bios_download || kanji_download ? {1'b0,kanji_download,ioctl_addr[19:2]} : !SRAMW_N || !SRAMR_N ? {1'b1,6'b000000,PA[16:4]} : {1'b0,ROM_SEL,PA[19:2]}),
+		.io_din (bios_download || kanji_download ? {2{ioctl_data[7:0],ioctl_data[15:8]}} : {4{PDO}}),
+		.io_we  (bios_download || kanji_download ? {~ioctl_addr[1],~ioctl_addr[1],ioctl_addr[1],ioctl_addr[1]}&{4{ioctl_wr|ioctl_wr_delayed}} : !SRAMW_N ? (4'h8>>PA[3:2])&{4{MCLK_CE}} : 4'b0000),
+		.io_rd  (bios_download || kanji_download ? 1'b0 : (~ROMCS_N|~SRAMR_N)&MCLK_CE),
 		.io_dout(ddr_io_do),
 		.io_busy(ddr_io_busy),
+		
+		.nvram_addr({sd_lba[5:0],tmpram_addr}),
+		.nvram_din ({tmpram_dout[7:0],tmpram_dout[15:8]}),
+		.nvram_wr  (tmpram_req & bk_loading),
+		.nvram_rd  (tmpram_req & ~bk_loading),
+		.nvram_dout(ddr_nvram_do),
+		.nvram_busy(ddr_nvram_busy),
 		
 		.sclk(SYS_CE_R),
 		.laddr(LA[19:2]),
@@ -956,10 +986,10 @@ module emu
 		.rdout(ddr_do[15:0]),
 		.busy(ddr_busy),
 		
-		.bladdr({9'b000000000,ddr_bladdr[17:0]}),
+		.bladdr(ddr_bladdr),
 		.blwr  (ddr_blwr),
 		.blrd  (ddr_blrd),
-		.braddr({9'b000000000,ddr_braddr[17:0]}),
+		.braddr(ddr_braddr),
 		.brwr  (ddr_brwr),
 		.brrd  (ddr_brrd),
 		.ba(),
@@ -971,7 +1001,6 @@ module emu
 	);
 
 	reg pause;
-	
 	always @(posedge clk_sys) begin
 		bit cond;
 		
@@ -988,84 +1017,149 @@ module emu
 		end
 	end
 	
-	wire  [7:0] NVRAM_Q;
-	dpram_dif #(15,8,14,16)	nvram
-	(
-		.clock(clk_sys),
-		.address_a(PA[16:2]),
-		.data_a(RAM_DO[7:0]),
-		.wren_a(~SRAMW_N),
-		.q_a(NVRAM_Q),
-
-		.address_b({sd_lba[5:0],sd_buff_addr}),
-		.data_b(sd_buff_dout),
-		.wren_b(sd_buff_wr & sd_ack),
-		.q_b(sd_buff_din)
-	);
-	
 	/////////////////////////  STATE SAVE/LOAD  /////////////////////////////
-
-	wire bk_save_write = ~SRAMW_N;
-	reg bk_pending;
-
-	always @(posedge clk_sys) begin
-		if (bk_ena && !OSD_STATUS && bk_save_write)
-			bk_pending <= 1'b1;
-		else if (bk_state || !bk_ena || cdd_info_download)
-			bk_pending <= 1'b0;
-	end
+	wire downloading = save_download;
+	wire bk_change  = ~SRAMW_N;
+	wire bk_load    = status[12];
+	wire bk_save    = status[13];
+	wire autosave   = status[14];
 
 	reg bk_ena = 0;
-	reg old_downloading = 0;
+	reg sav_pending = 0;
 	always @(posedge clk_sys) begin
-		old_downloading <= save_download;
-		if (~old_downloading & save_download) bk_ena <= 0;
+		reg old_downloading = 0;
+		reg old_change = 0;
+
+		old_downloading <= downloading;
+		if(downloading && !old_downloading) bk_ena <= 0;
 
 		//Save file always mounted in the end of downloading state.
-		if (save_download && img_mounted && !img_readonly) bk_ena <= 1;
+		if(downloading && img_mounted && !img_readonly) bk_ena <= 1;
+
+		old_change <= bk_change;
+		if (bk_change && !old_change) sav_pending <= 1;
+		else if (bk_state) sav_pending <= 0;
 	end
 
-	wire bk_load    = status[12];
-	wire bk_save    = status[13] | (bk_pending & OSD_STATUS & status[14]);
+	wire bk_save_a  = autosave & OSD_STATUS;
 	reg  bk_loading = 0;
 	reg  bk_state   = 0;
 	always @(posedge clk_sys) begin
-		reg old_load = 0, old_save = 0, old_ack;
+		reg old_downloading = 0;
+		reg old_load = 0, old_save = 0, old_save_a = 0, old_ack;
+		reg [1:0] state;
 
-		old_load <= bk_load & bk_ena;
-		old_save <= bk_save & bk_ena;
-		old_ack  <= sd_ack;
+		old_downloading <= downloading;
+
+		old_load   <= bk_load;
+		old_save   <= bk_save;
+		old_save_a <= bk_save_a;
+		old_ack    <= sd_ack;
 
 		if(sd_ack && !old_ack) {sd_rd, sd_wr} <= 0;
 
 		if (!bk_state) begin
-			if ((bk_load && !old_load) | (bk_save && !old_save)) begin
+			tmpram_tx_start <= 0;
+			state <= 0;
+			sd_lba <= 0;
+			bk_loading <= 0;
+			if (bk_ena && ((bk_load && !old_load) | (bk_save && !old_save) | (bk_save_a && !old_save_a && sav_pending))) begin
 				bk_state <= 1;
 				bk_loading <= bk_load;
-				sd_lba <= 0;
 				sd_rd <=  bk_load;
-				sd_wr <= ~bk_load;
+				sd_wr <= 0;
 			end
 			if (old_downloading && !bios_download && !kanji_download && bk_ena) begin
 				bk_state <= 1;
 				bk_loading <= 1;
-				sd_lba <= 0;
 				sd_rd <= 1;
 				sd_wr <= 0;
 			end
-		end else begin
-			if (old_ack && !sd_ack) begin
-				if (sd_lba == 32'h3F) begin
-					bk_loading <= 0;
-					bk_state <= 0;
-				end else begin
-					sd_lba <= sd_lba + 1'd1;
-					sd_rd  <=  bk_loading;
-					sd_wr  <= ~bk_loading;
-				end
+		end
+		else begin
+			if (bk_loading) begin
+				case(state)
+					0: begin
+							sd_rd <= 1;
+							state <= 1;
+						end
+					1: if (!sd_ack && old_ack) begin
+							tmpram_tx_start <= 1;
+							state <= 2;
+						end
+					2: if(tmpram_tx_finish) begin
+							tmpram_tx_start <= 0;
+							state <= 0;
+							sd_lba <= sd_lba + 1'd1;
+							if (sd_lba == 32'h3F) bk_state <= 0;
+						end
+				endcase
+			end
+			else begin
+				case(state)
+					0: begin
+							tmpram_tx_start <= 1;
+							state <= 1;
+						end
+					1: if (tmpram_tx_finish) begin
+							tmpram_tx_start <= 0;
+							sd_wr <= 1;
+							state <= 2;
+						end
+					2: if (!sd_ack && old_ack) begin
+							state <= 0;
+							sd_lba <= sd_lba + 1'd1;
+							if (sd_lba == 32'h3F) bk_state <= 0;
+						end
+				endcase
 			end
 		end
 	end
+
+	wire [15:0] tmpram_dout;
+	wire [15:0] tmpram_din = {ddr_nvram_do[7:0],ddr_nvram_do[15:8]};
+	wire        tmpram_busy = ddr_nvram_busy;
+
+	wire [15:0] tmpram_sd_buff_q;
+	dpram_dif #(8,16,8,16) tmpram
+	(
+		.clock(clk_sys),
+
+		.address_a(tmpram_addr),
+		.wren_a(~bk_loading & tmpram_req & ~tmpram_busy),
+		.data_a(tmpram_din),
+		.q_a(tmpram_dout),
+
+		.address_b(sd_buff_addr),
+		.wren_b(sd_buff_wr & sd_ack),
+		.data_b(sd_buff_dout),
+		.q_b(tmpram_sd_buff_q)
+	);
+
+	reg  [8:1] tmpram_addr;
+	reg tmpram_tx_start;
+	reg tmpram_tx_finish;
+	reg tmpram_req;
+	always @(posedge clk_sys) begin
+		reg state;
+		
+		if (tmpram_req && !tmpram_busy) tmpram_req <= 0;
+
+		if (~tmpram_tx_start) {tmpram_addr, state, tmpram_tx_finish} <= '0;
+		else if (~tmpram_tx_finish) begin
+			if (!state) begin
+				tmpram_req <= 1;
+				state <= 1;
+			end
+			else if (tmpram_req && !tmpram_busy) begin
+				state <= 0;
+				if (~&tmpram_addr) tmpram_addr <= tmpram_addr + 1'd1;
+				else tmpram_tx_finish <= 1;
+			end
+		end
+	end
+
+	assign sd_buff_din = tmpram_sd_buff_q; 
 	
 
 	////////////////////////////////////////////////////////////////

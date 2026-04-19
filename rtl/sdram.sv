@@ -47,7 +47,7 @@ module sdram
 	output reg [31: 0] dbg_no_refresh,
 	output reg [23:0] dbg_numrfs_in_64ms,
 	
-	output reg [21:11] dbg_open_page,
+	output reg [21:11] dbg_open_lpage,dbg_open_rpage,
 	output reg         dbg_cross_page
 `endif
 );
@@ -163,7 +163,7 @@ module sdram
 				lpage_opened <= 1;
 `ifdef DEBUG
 				dbg_cross_page <= 0;
-				dbg_open_page <= laddr[21:11];
+				dbg_open_lpage <= laddr[21:11];
 `endif
 			end
 			if (rras && rcode == 4'h8 && st_num[2:0] == 3'd6) begin
@@ -171,25 +171,32 @@ module sdram
 				state[0].ADDR <= {raddr,1'b0};
 				state[0].BANK <= 2'd1;
 				rpage_opened <= 1;
+`ifdef DEBUG
+				dbg_cross_page <= 0;
+				dbg_open_rpage <= raddr[21:11];
+`endif
 			end
 			
-			if (lras && lcode == 4'h1 && st_num[2:0] == 3'd0) begin
+			if (lras && lcode == 4'h1 && st_num[2:0] == 3'd0 && lpage_opened) begin
 				state[0].CMD  <= CTRL_CAS;
 				state[0].ADDR <= {laddr,1'b0};
 				state[0].RD   <= 1;
 				state[0].BANK <= 2'd0;
 `ifdef DEBUG
-				dbg_cross_page <= (dbg_open_page != laddr[21:11]);
+				dbg_cross_page <= (dbg_open_lpage != laddr[21:11]);
 `endif
 			end
-			if (rras && rcode == 4'h1 && st_num[2:0] == 3'd1) begin
+			if (rras && rcode == 4'h1 && st_num[2:0] == 3'd1 && rpage_opened) begin
 				state[0].CMD  <= CTRL_CAS;
 				state[0].ADDR <= {raddr,1'b0};
 				state[0].RD   <= 1;
 				state[0].BANK <= 2'd1;
+`ifdef DEBUG
+				dbg_cross_page <= (dbg_open_rpage != raddr[21:11]);
+`endif
 			end
 			
-			if (lras && lcode == 4'h2 && (st_num[2:0] == 3'd2 || st_num[2:0] == 3'd6)) begin
+			if (lras && lcode == 4'h2 && (st_num[2:0] == 3'd2 || st_num[2:0] == 3'd6) && lpage_opened) begin
 				state[0].CMD  <= CTRL_CAS;
 				state[0].ADDR <= {laddr,1'b0};
 				state[0].WE   <= 1;
@@ -197,16 +204,19 @@ module sdram
 				state[0].DATA <= din[31:16];
 				state[0].BANK <= 2'd0;
 `ifdef DEBUG
-				dbg_cross_page <= (dbg_open_page != laddr[21:11]);
+				dbg_cross_page <= (dbg_open_lpage != laddr[21:11]);
 `endif
 			end
-			if (rras && rcode == 4'h2 && (st_num[2:0] == 3'd3 || st_num[2:0] == 3'd7)) begin
+			if (rras && rcode == 4'h2 && (st_num[2:0] == 3'd3 || st_num[2:0] == 3'd7) && rpage_opened) begin
 				state[0].CMD  <= CTRL_CAS;
 				state[0].ADDR <= {raddr,1'b0};
 				state[0].WE   <= 1;
 				state[0].BE   <= rwe;
 				state[0].DATA <= din[15:0];
 				state[0].BANK <= 2'd1;
+`ifdef DEBUG
+				dbg_cross_page <= (dbg_open_rpage != raddr[21:11]);
+`endif
 			end
 			
 			if (lras && (lcode == 4'h4 || lcode == 4'hC) && st_num[2:0] == 3'd4) begin
