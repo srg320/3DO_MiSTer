@@ -14,12 +14,19 @@ module ddram
 	input          clk,
 	input          rst,
 	
-	input  [27: 2] io_addr,
+	input  [21: 2] io_addr,
 	output [31: 0] io_dout,
 	input  [31: 0] io_din,
 	input          io_rd,
 	input  [ 3: 0] io_we,
 	output         io_busy,
+	
+	input  [14: 1] nvram_addr,
+	output [15: 0] nvram_dout,
+	input  [15: 0] nvram_din,
+	input          nvram_rd,
+	input          nvram_wr,
+	output         nvram_busy,
 
 	input          sclk,
 	input  [19: 2] laddr,
@@ -64,7 +71,9 @@ module ddram
 	reg            write_lbusy = 0,write_rbusy = 0;
 	reg            write_lcache_update,write_rcache_update;
 	reg            io_read_busy = 0;
-	reg            io_write_busy = 0;
+	reg            io_write_busy = 0,io_write_pend,io_write_pend2;
+	reg            nvram_read_busy = 0;
+	reg            nvram_write_busy = 0;
 
 	reg  [ 19:  2] burst_laddr,burst_raddr;
 	reg  [ 19:  2] write_laddr,write_raddr;
@@ -72,28 +81,30 @@ module ddram
 	reg  [  1:  0] write_lbe,write_rbe;
 	reg  [ 19:  2] read_laddr = '1,read_raddr = '1;
 	reg            read_lact,read_ract;
-	reg  [ 27:  2] io_write_addr;
+	reg  [ 21:  2] io_write_addr;
 	reg  [ 31:  0] io_write_data;
 	reg  [  3:  0] io_write_be;
-	reg  [ 27:  2] io_read_addr;
+	reg  [ 21:  2] io_read_addr;
 	reg  [ 31:  0] io_rbuf;
+	reg  [ 14:  1] nvram_write_addr;
+	reg  [ 15:  0] nvram_write_data;
+	reg  [ 14:  1] nvram_read_addr;
+	reg  [ 31:  0] nvram_rbuf;
 
 	reg  [  3:  0] state = 0;
 	reg  [  7:  0] rpos,wpos = '0;
 	reg  [  3:  0] lcache_wren,rcache_wren;
 
 	always @(posedge clk) begin
-		bit old_io_rd, old_io_we;
+		bit old_io_rd, old_io_we,old_nvram_rd,old_nvram_wr;
 		bit old_blrd, old_blwr, old_brrd, old_brwr;
 		bit old_lras, old_lrd, old_lwe, old_rras, old_rrd, old_rwe;
 		bit old_rst;
-		bit read_lprepend,read_rprepend;
 		bit read_lpend,read_rpend;
 		bit write_lprepend,write_rprepend;
 		bit burst_lact,burst_ract,burst_interrupted;
 		bit burst_write;
 		bit [7:0] burst_ba;
-		bit [19:2] laddr_ff,raddr_ff;
 		bit [63:0] bin_save;
 		
 		old_blwr <= blwr; old_brwr <= brwr;
@@ -128,44 +139,22 @@ module ddram
 			burst_read_rbusy <= 1;
 		end
 		
-		laddr_ff <= laddr;
-		raddr_ff <= raddr;
 		if (rst) begin
-			read_lprepend <= 0;
 			read_lbusy <= 0;
 		end else if (lrd && !old_lrd && lras && old_lras) begin
-			read_lprepend <= 1;
 			read_laddr <= laddr;
 			if (read_laddr[19:7] != laddr[19:7]) begin
 				read_lbusy <= 1;
 			end
 		end
 		if (rst) begin
-			read_rprepend <= 0;
 			read_rbusy <= 0;
 		end else if (rrd && !old_rrd && rras && old_rras) begin
-			read_rprepend <= 1;
 			read_raddr <= raddr;
 			if (read_raddr[19:7] != raddr[19:7]) begin
 				read_rbusy <= 1;
 			end
 		end
-//		if (rst) begin
-//			read_laddr <= '1;
-//			read_lpend <= 0;
-//		end else if (read_lprepend) begin
-//			read_lprepend <= 0;
-//			read_laddr <= laddr_ff;
-//			read_lpend <= 1;
-//		end
-//		if (rst) begin
-//			read_raddr <= '1;
-//			read_rpend <= 0;
-//		end else if (read_rprepend) begin
-//			read_rprepend <= 0;
-//			read_raddr <= raddr_ff;
-//			read_rpend <= 1;
-//		end
 		
 		if (rst) begin
 			write_lprepend <= 0;
@@ -222,10 +211,33 @@ module ddram
 		if (rst && !old_rst) begin
 			io_write_busy <= 0;
 		end else if (|io_we && !old_io_we) begin
+			io_write_busy <= 1;
+		end
+		if (io_write_busy && !io_write_pend) begin
+			io_write_pend <= 1;
+		end
+		if (io_write_pend && !io_write_pend2) begin
 			io_write_addr <= io_addr;
 			io_write_data <= io_din;
 			io_write_be <= io_we;
-			io_write_busy <= 1;
+			io_write_pend2 <= 1;
+			io_write_pend <= 0;
+		end
+		
+		old_nvram_rd <= nvram_rd;
+		old_nvram_wr <= nvram_wr;
+		if (rst && !old_rst) begin
+			nvram_read_busy <= 0;
+		end else if (nvram_rd && !old_nvram_rd) begin
+			nvram_read_addr <= nvram_addr;
+			nvram_read_busy <= 1;
+		end
+		if (rst && !old_rst) begin
+			nvram_write_busy <= 0;
+		end else if (nvram_wr && !old_nvram_wr) begin
+			nvram_write_addr <= nvram_addr;
+			nvram_write_data <= nvram_din;
+			nvram_write_busy <= 1;
 		end
 		
 		{blte,brte} <= 0;
@@ -290,7 +302,7 @@ module ddram
 						ram_ba      <= (!write_laddr[2] ? {write_lbe,6'b000000} : {4'b0000,write_lbe,2'b00}) | (!write_raddr[2] ? {2'b00,write_rbe,4'b0000} : {6'b000000,write_rbe});
 						ram_write 	<= 1;
 						ram_burst   <= 1;
-						state       <= 4'd3;
+						state       <= 4'd6;
 					end
 					else if (write_lpend) begin 
 						write_lpend <= 0;
@@ -301,7 +313,7 @@ module ddram
 						ram_ba      <= !write_laddr[2] ? {write_lbe,6'b000000} : {4'b0000,write_lbe,2'b00};
 						ram_write 	<= 1;
 						ram_burst   <= 1;
-						state       <= 4'd3;
+						state       <= 4'd6;
 					end
 					else if (write_rpend) begin 
 						write_rpend <= 0;
@@ -312,10 +324,9 @@ module ddram
 						ram_ba      <= !write_raddr[2] ? {2'b00,write_rbe,4'b0000} : {6'b000000,write_rbe};
 						ram_write 	<= 1;
 						ram_burst   <= 1;
-						state       <= 4'd3;
+						state       <= 4'd6;
 					end
 					else if (read_lbusy) begin 
-//						read_lpend <= 0;
 						read_lact <= 1;
 						if (read_rbusy && read_raddr == read_laddr) read_ract <= 1;
 						ram_address <= {8'b00000000,read_laddr[19:7],6'b000000};
@@ -323,33 +334,48 @@ module ddram
 						ram_read    <= 1;
 						ram_burst   <= 16;
 						rpos        <= '0;
-						state       <= 4'd4;
+						state       <= 4'd7;
 					end
 					else if (read_rbusy) begin 
-//						read_rpend <= 0;
 						read_ract <= 1;
 						ram_address <= {8'b00000000,read_raddr[19:7],6'b000000};
 						ram_ba      <= 8'hFF;
 						ram_read    <= 1;
 						ram_burst   <= 16;
 						rpos        <= '0;
-						state       <= 4'd4;
+						state       <= 4'd7;
 					end
-					else if (io_write_busy) begin 
-						ram_address <= {io_write_addr[27:3],2'b00};
+					else if (io_write_pend2) begin 
+						ram_address <= {6'b000001,io_write_addr[21:3],2'b00};
 						ram_din		<= {2{io_write_data}};
 						ram_ba      <= !io_write_addr[2] ? {io_write_be,4'b0000} : {4'b0000,io_write_be};
 						ram_write 	<= 1;
 						ram_burst   <= 1;
-						state       <= 4'd6;
+						state       <= 4'd8;
 					end
 					else if (io_read_busy) begin 
-						ram_address <= {io_read_addr[27:3],2'b00};
+						ram_address <= {6'b000001,io_read_addr[21:3],2'b00};
 						ram_ba      <= 8'hFF;
 						ram_read    <= 1;
 						ram_burst   <= 1;
 //						rpos        <= '0;
-						state       <= 4'd7;
+						state       <= 4'd9;
+					end
+					else if (nvram_write_busy) begin 
+						ram_address <= {6'b000001,7'b1000000,nvram_write_addr[14:3],2'b00};
+						ram_din		<= {4{nvram_write_data}};
+						ram_ba      <= 8'hC0 >> {nvram_write_addr[2:1],1'b0};
+						ram_write 	<= 1;
+						ram_burst   <= 1;
+						state       <= 4'd10;
+					end
+					else if (nvram_read_busy) begin 
+						ram_address <= {6'b000001,7'b1000000,nvram_read_addr[14:3],2'b00};
+						ram_ba      <= 8'hFF;
+						ram_read    <= 1;
+						ram_burst   <= 1;
+//						rpos        <= '0;
+						state       <= 4'd11;
 					end
 				end
 				
@@ -370,14 +396,14 @@ module ddram
 						if (burst_ract) burst_raddr <= burst_raddr + 18'h00100;
 						burst_lact <= 0;
 						burst_ract <= 0;
-						state <= 4'd9;
+						state <= 4'd4;
 					end
 					if (wpos == 8'd255) begin
 						if (burst_lact) burst_write_lbusy <= 0;
 						if (burst_ract) burst_write_rbusy <= 0;
 						burst_lact <= 0;
 						burst_ract <= 0;
-						state <= burst_read_lbusy || burst_read_rbusy ? 4'd8 : 4'd9;
+						state <= burst_read_lbusy || burst_read_rbusy ? 4'd3 : 4'd4;
 					end
 				end
 				
@@ -392,17 +418,29 @@ module ddram
 						if (burst_ract) burst_read_rbusy <= 0;
 						burst_lact <= 0;
 						burst_ract <= 0;
-						state <= burst_write_lbusy || burst_write_rbusy ? 4'd8 : 4'd0;
+						state <= burst_write_lbusy || burst_write_rbusy ? 4'd3 : 4'd0;
 					end
 				end
 				
 				4'd3: begin
+					state <= 4'd4;
+				end
+				
+				4'd4: begin
+					state <= 4'd5;
+				end
+				
+				4'd5: begin
+					state <= 4'd0;
+				end
+				
+				4'd6: begin
 					lcache_wren <= '0;
 					rcache_wren <= '0;
 					state <= 4'd0;
 				end
 				
-				4'd4: if (DDRAM_DOUT_READY) begin
+				4'd7: if (DDRAM_DOUT_READY) begin
 					rpos[4:0] <= rpos[4:0] + 5'd2;
 					if (rpos[4:0] == 5'h1E) begin
 						if (read_lact) read_lbusy <= 0;
@@ -413,41 +451,34 @@ module ddram
 					end
 				end
 				
-				4'd5: if (DDRAM_DOUT_READY) begin
-					rpos[2:0] <= rpos[2:0] + 3'd2;
-					if (rpos[2:0] == 3'd6) begin
-						state <= 4'd0;
-					end
-				end
-				
-				4'd6: begin
+				4'd8: begin
 					io_write_busy <= 0;
+					io_write_pend2 <= 0;
 					state <= 4'd0;
 				end
 				
-				4'd7: if (DDRAM_DOUT_READY) begin
+				4'd9: if (DDRAM_DOUT_READY) begin
 					io_rbuf <= !io_read_addr[2] ? DDRAM_DOUT[63:32] : DDRAM_DOUT[31:0];
 					io_read_busy <= 0;
 					state <= 4'd0;
 				end
 				
-				4'd8: begin
-					state <= 4'd9;
-				end
-				
-				4'd9: begin
-					state <= 4'd10;
-				end
-				
 				4'd10: begin
+					nvram_write_busy <= 0;
+					state <= 4'd0;
+				end
+				
+				4'd11: if (DDRAM_DOUT_READY) begin
+					nvram_rbuf <= !nvram_read_addr[2] ? DDRAM_DOUT[63:32] : DDRAM_DOUT[31:0];
+					nvram_read_busy <= 0;
 					state <= 4'd0;
 				end
 			endcase
 		end
 	end
 	
-	wire           lcache_load = (state == 4'd4) && read_lact && DDRAM_DOUT_READY && !DDRAM_BUSY;
-	wire           rcache_load = (state == 4'd4) && read_ract && DDRAM_DOUT_READY && !DDRAM_BUSY;
+	wire           lcache_load = (state == 4'd7) && read_lact && DDRAM_DOUT_READY && !DDRAM_BUSY;
+	wire           rcache_load = (state == 4'd7) && read_ract && DDRAM_DOUT_READY && !DDRAM_BUSY;
 	wire [ 31:  0] lcache_q,rcache_q;
 
 	ddr_cache_ram #(4) lcache (clk, lcache_load ? rpos[4:1] : write_laddr[6:3], lcache_load ? {DDRAM_DOUT[63:48],DDRAM_DOUT[31:16]} : {2{write_ldata}}, ({4{lcache_load}} | lcache_wren), read_laddr[6:3], lcache_q);
@@ -469,6 +500,14 @@ module ddram
 	
 	assign io_dout = io_rbuf;
 	assign io_busy = io_read_busy | io_write_busy;
+	
+	always_comb begin
+		case (nvram_read_addr[1])
+			1'b0: nvram_dout = nvram_rbuf[31:16];
+			1'b1: nvram_dout = nvram_rbuf[15:00];
+		endcase
+		nvram_busy = nvram_read_busy | nvram_write_busy;
+	end
 	
 	assign DDRAM_CLK      = clk;
 	assign DDRAM_BURSTCNT = ram_burst;

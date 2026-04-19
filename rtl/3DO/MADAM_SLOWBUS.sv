@@ -16,7 +16,7 @@ module MADAM_SLOWBUS
 	output     [31: 0] MDTO,
 	
 	input      [31: 0] PDI,
-	output     [ 7: 0] PDO,
+	output reg [ 7: 0] PDO,
 	output             ROMCS_N,
 	output             SRAMW_N,
 	output             SRAMR_N
@@ -25,7 +25,9 @@ module MADAM_SLOWBUS
 	wire SRAM_SEL = (SEL && ADDR[20] && ADDR[19:18] == 2'b01);
 	wire ROM_SEL = (SEL && !ADDR[20]);
 	
-	assign PDO = MDTI[7:0];
+	always @(posedge CLK) begin
+		PDO <= MDTI[7:0];
+	end
 	assign ROMCS_N = ~ROM_SEL;
 	assign SRAMW_N = ~(SRAM_SEL &&  WR);
 	assign SRAMR_N = ~(SRAM_SEL && ~WR);
