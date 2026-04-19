@@ -659,8 +659,6 @@ module MADAM_ARB
 					if (SPR_SEL[0]) begin
 						if (SPRDATA_REQ && !HI_PRIO_REQ) begin
 							BUS_ST <= SPRDATA_REQ == 2'd1 ? SPR_PREINIT1 : SPR_PREINIT3;
-						end else if (SPRDRAW_REQ && !HI_PRIO_REQ) begin
-							BUS_ST <= CFB_INIT0;
 						end else begin
 							SE_GRANT_INT <= 0;
 							BUS_ST <= BUS_IDLE;
