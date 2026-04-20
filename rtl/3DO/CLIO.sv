@@ -144,7 +144,7 @@ module CLIO
 	bit          DSP_GW;
 	bit  [ 9: 0] DSP_PC;
 	bit  [15: 0] DSP_NRC;
-	bit  [15: 0] DSP_NOISE;
+	bit  [16: 0] DSP_NOISE;
 	bit  [15: 0] DSP_SEMAPHORE;
 	bit  [ 3: 0] DSP_SEMAPHORE_STAT;
 	
@@ -921,7 +921,7 @@ module CLIO
 		else if (DSP_DIRECT_SEL)
 			case ({A[7:2],2'b00})
 				8'hD0: CPU_DO <= {12'b0000_0000_0000,DSP_SEMAPHORE_STAT,DSP_SEMAPHORE};
-				8'hF0: CPU_DO <= {16'h0000,DSP_NOISE};
+				8'hF0: CPU_DO <= {16'h0000,DSP_NOISE[15:0]};
 				8'hF4: CPU_DO <= {16'h0000,6'b000000,DSP_PC};
 				8'hF8: CPU_DO <= {16'h0000,DSP_NRC};
 				8'hFC: CPU_DO <= {31'h00000000,DSP_GW};
@@ -1086,10 +1086,12 @@ module CLIO
 	wire DSP_NOISE_OE = (DSP_EI_ADDR == 8'hEA);					//0x0EA
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
-			DSP_NOISE <= 0;
+			DSP_NOISE <= 17'h00001;
 		end
 		else if (EN && DSP_EN && CE_R) begin
-			DSP_NOISE <= DSP_NOISE + 16'd1;//TODO
+			if (DSP_NOISE_OE) begin
+				DSP_NOISE <= {DSP_NOISE[5]^DSP_NOISE[0],DSP_NOISE[16:1]};
+			end
 		end
 	end
 	
@@ -1383,7 +1385,7 @@ module CLIO
 						      EIFIFO_STAT_OE ? {12'b0000_0000_0000,EIFIFO_STAT[DSP_EI_ADDR[3:0]]} :
 						      EOFIFO_STAT_OE ? {12'b0000_0000_0000,EOFIFO_STAT[DSP_EI_ADDR[1:0]]} :
 						      EIFIFO_OE || EIFIFO_OE2 ? EIFIFO_BUF[DSP_EI_ADDR[3:0]] :
-								DSP_NOISE_OE ? DSP_NOISE :
+								DSP_NOISE_OE ? DSP_NOISE[15:0] :
 						      AUDLOCK_OE ? {AUDLOCK,15'b000_0000_0000_0000} :
 						      SEMASTAT_OE ? {12'b0000_0000_0000,DSP_SEMAPHORE_STAT} :
 						      SEMAPHORE_OE ? DSP_SEMAPHORE :
