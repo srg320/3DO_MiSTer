@@ -48,7 +48,8 @@ module sdram
 	output reg [23:0] dbg_numrfs_in_64ms,
 	
 	output reg [21:11] dbg_open_lpage,dbg_open_rpage,
-	output reg         dbg_cross_page
+	output reg         dbg_cross_page,
+	output reg         dbg_hook
 `endif
 );
 
@@ -123,7 +124,7 @@ module sdram
 	state_t state[6];
 	reg [ 3: 0] st_num;
 	
-	reg ras_old,rfs_old;
+	reg rfs_old;
 	always @(posedge clk) begin
 		reg sync_old;
 		
@@ -137,7 +138,6 @@ module sdram
 				st_num <= 4'd1;
 			end
 			
-//			ras_old <= ras;
 			rfs_old <= rfs;
 		end
 	end
@@ -205,6 +205,9 @@ module sdram
 				state[0].BANK <= 2'd0;
 `ifdef DEBUG
 				dbg_cross_page <= (dbg_open_lpage != laddr[21:11]);
+				if (dbg_open_lpage == (22'h0B9A6C>>11) && laddr[10:2] == ((22'h0B9A6C&22'h0007FF)>>2)) begin
+					dbg_hook <= (din[31:16] == 16'h00FF);
+				end
 `endif
 			end
 			if (rras && rcode == 4'h2 && (st_num[2:0] == 3'd3 || st_num[2:0] == 3'd7) && rpage_opened) begin
@@ -224,10 +227,10 @@ module sdram
 				state[0].BANK <= 2'd0;
 				state[0].RFS  <= 1;
 			end
-			else if ((rfs && !rfs_old) || (!rfs && rfs_old)) begin
+			else if (!lras && !rras && (lcode == 4'h2) && st_num[2:0] == 3'd4) begin
 				state[0].CMD  <= CTRL_RAS;
 				state[0].BANK <= 2'd0;
-				state[0].RFS  <= 1;  
+				state[0].RFS  <= 1;
 			end
 			
 			if (!lras && lpage_opened && st_num[2:0] == 3'd0) begin
