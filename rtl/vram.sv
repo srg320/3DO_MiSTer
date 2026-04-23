@@ -23,6 +23,7 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 	output [31: 0] ESDATA,
 	output         ESWR,
 	output         ESRD,
+	output         ESFW,
 	input  [31: 0] ESQ,
 	input          ESTE,
 	
@@ -170,7 +171,13 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 			if (RT_EXEC || MWT_EXEC || FW_EXEC) DBG_WAIT_CNT <= DBG_WAIT_CNT + 1'd1;
 			
 			SR_WE <= 0;
-			if ((RT_EXEC || MWT_EXEC || FW_EXEC) && (ESTE || ISTE)) begin
+			if (FW_EXEC) begin
+				SREG_POS <= SREG_POS + (ISTE ? 9'h10 : 9'h20);
+				if ((SREG_POS[8:5] == 4'hF && !ISTE) || (SREG_POS[8:4] == 5'h1F && ISTE)) begin
+					FW_EXEC <= 0;
+					ISTE <= 0;
+				end
+			end else if ((RT_EXEC || MWT_EXEC) && (ESTE || ISTE)) begin
 				SR_WA <= SREG_POS;
 				SR_WD <= ESQ;
 				SR_WE <= RT_EXEC;
@@ -186,7 +193,6 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 				if (((SREG_POS[8:0] == 9'h1FE && ESTE) || (SREG_POS[8:4] == 5'h1F && ISTE)) && !SPLIT) begin
 					RT_EXEC <= 0;
 					MWT_EXEC <= 0;
-					FW_EXEC <= 0;
 					ISTE <= 0;
 				end
 				
@@ -301,8 +307,9 @@ module P3DO_VRAM #(parameter USE_BRAM = 0) (
 	
 	assign ESADDR = {MEM_ROW,SREG_POS};
 	assign ESDATA = FW_EXEC ? {2{COLOR}} : SR_DATA;
-	assign ESWR = (MWT_EXEC | FW_EXEC) & ~ISTE;
+	assign ESWR = MWT_EXEC & ~ISTE;
 	assign ESRD = RT_REQ & ~ISTE;
+	assign ESFW = FW_EXEC & ~ISTE;
 	
 	assign QSF = SR_RA[8];
 

@@ -305,7 +305,7 @@ module emu
 		"P1-;",
 		"P1O4,Aspect Ratio,4:3,16:9;",
 		"P1O5,320x224 Aspect,Original,Corrected;",
-		"P1O13,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
+		"P1O13,Scandoubler Fx,None,CRT 25%,CRT 50%,CRT 75%;",
 		"P1-;",
 		"P1O67,Composite Blend,Off,On,Adaptive;",
 	
@@ -439,9 +439,17 @@ module emu
 	
 	reg reset = 1, mem_rst = 1;
 	always @(posedge clk_sys) begin
-		reset <= RESET | status[0] | buttons[1] | bios_download;
-		mem_rst <= RESET | status[0] | buttons[1];
-	end
+		reg        reset_cond,reset_cond_old;
+		reg [12:0] reset_delay = '0;
+		
+		reset_cond = RESET | status[0] | buttons[1];
+		reset_cond_old <= reset_cond;
+		if (reset_cond && !reset_cond_old) reset_delay <= '1;
+		else if (reset_delay) reset_delay <= reset_delay - 13'd1;
+		
+		reset   <= reset_cond | |reset_delay | bios_download | kanji_download;
+		mem_rst <= reset_cond | |reset_delay;
+	end	
 	
 
 `ifdef DEBUG
@@ -555,6 +563,7 @@ module emu
 				if (id == 32'h043DCD69 && msf == 32'h69026900) NEED_DSP_PAUSE <= 1;//Decathlon (US) (Unl)
 				if (id == 32'h0A9B739E                       ) NEED_DSP_PAUSE <= 1;//Killing Time (US) (RE1)
 				if (id == 32'h06065D10                       ) NEED_DSP_PAUSE <= 1;//Snow Job Starring Tracy Scoggins (US)
+				if (id == 32'h3AC732DE                       ) NEED_DSP_PAUSE <= 1;//BattleSport (USA) (Beta) (1995-09-22)
 			end
 		end
 	end
@@ -875,6 +884,7 @@ module emu
 		.ESDATA(vram_bldata),
 		.ESWR(ddr_blwr),
 		.ESRD(ddr_blrd),
+		.ESFW(ddr_bfw),
 		.ESQ({ddr_bout[63:48],ddr_bout[31:16]}),
 		.ESTE(ddr_blte),
 		
@@ -911,6 +921,7 @@ module emu
 		.ESDATA(vram_brdata),
 		.ESWR(ddr_brwr),
 		.ESRD(ddr_brrd),
+		.ESFW(),
 		.ESQ({ddr_bout[47:32],ddr_bout[15:0]}),
 		.ESTE(ddr_brte),
 		
@@ -939,6 +950,7 @@ module emu
 	wire [17: 0] ddr_bladdr,ddr_braddr;
 	wire         ddr_blwr,ddr_brwr;
 	wire         ddr_blrd,ddr_brrd;
+	wire         ddr_bfw;
 	wire [63: 0] ddr_bin = {vram_bldata[31:16],vram_brdata[31:16],vram_bldata[15:0],vram_brdata[15:0]};
 	wire [63: 0] ddr_bout;
 	wire         ddr_blte,ddr_brte;
@@ -989,6 +1001,7 @@ module emu
 		.braddr(ddr_braddr),
 		.brwr  (ddr_brwr),
 		.brrd  (ddr_brrd),
+		.bfw   (ddr_bfw),
 		.ba(),
 		.bin(ddr_bin),
 		.bout(ddr_bout),
@@ -1167,20 +1180,20 @@ module emu
 		forced_scandoubler_sync <= forced_scandoubler;
 		scale_sync <= scale;
 	end
-	wire [ 2: 0] sl = scale_sync ? scale_sync - 1'd1 : 3'd0;
+	wire [ 2: 0] sl = scale_sync;
 	
 	assign CLK_VIDEO = clk_vid;
 	assign VGA_SL = {~INTERLACE,~INTERLACE} & sl[1:0];
 	assign VGA_F1 = FIELD;
 	
 	wire vga_de;
-	video_mixer #(.LINE_LENGTH(640+8), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
+	video_mixer #(.LINE_LENGTH(8), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
 	(
 		.*,
 	
 		.ce_pix(DCLK),	
 		.scandoubler(~INTERLACE && (scale_sync || forced_scandoubler_sync)),
-		.hq2x(scale_sync==1),	
+		.hq2x(0),	
 		.freeze_sync(),
 	
 		.VGA_DE(vga_de),
