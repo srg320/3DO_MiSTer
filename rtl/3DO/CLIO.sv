@@ -103,6 +103,8 @@ module CLIO
 	
 	bit  [31: 0] UNCLE_BITS;
 	
+	bit  [16: 0] NOISE;
+	
 	bit  [ 2: 0] CLC1,CLC2;
 	
 	typedef enum bit [2:0] {
@@ -144,7 +146,7 @@ module CLIO
 	bit          DSP_GW;
 	bit  [ 9: 0] DSP_PC;
 	bit  [15: 0] DSP_NRC;
-	bit  [16: 0] DSP_NOISE;
+	bit  [15: 0] DSP_NOISE;
 	bit  [15: 0] DSP_SEMAPHORE;
 	bit  [ 3: 0] DSP_SEMAPHORE_STAT;
 	
@@ -165,6 +167,7 @@ module CLIO
 	bit          DSP_EIRAM32_WE;
 	bit          DSP_SEMA_WE;
 	bit          DSP_SEMA_ACK;
+	bit          DSP_NOISE_RD;
 	
 	bit          EIFIFO_EMPTY_LATCH[13];
 	
@@ -223,6 +226,7 @@ module CLIO
 			DSP_EIRAM32_WE <= 0;
 			DSP_SEMA_WE <= 0;
 			DSP_SEMA_ACK <= 0;
+			DSP_NOISE_RD <= 0;
 			
 			DMA_ST <= DMA_IDLE;
 			DMA_CHAN <= '0;
@@ -262,6 +266,7 @@ module CLIO
 			DSP_EIRAM32_WE <= 0;
 			DSP_SEMA_WE <= 0;
 			DSP_SEMA_ACK <= 0;
+			DSP_NOISE_RD <= 0;
 			
 			DMA_ST <= DMA_IDLE;
 			DMA_CHAN <= '0;
@@ -327,6 +332,7 @@ module CLIO
 				DSP_NRAM32_WE <= 0;
 				DSP_SEMA_WE <= 0;
 				DSP_SEMA_ACK <= 0;
+				DSP_NOISE_RD <= 0;
 				case (IO_ST)
 					IO_IDLE: begin
 						
@@ -447,6 +453,13 @@ module CLIO
 						else if (CLC == 3'h3 && !INFO_CODE /*&& MCLK_PH1*/) begin	//CPU read
 							if (A == (16'h0000>>2)) begin
 								IO_ST <= IO_IDLE;
+							end
+							else if (DSP_DIRECT_SEL) begin
+								case ({A[7:2],2'b00})
+									8'hF0: DSP_NOISE_RD <= 1;
+									default:;
+								endcase
+								IO_ST <= IO_DSP_READ;
 							end
 							else if (DSP_EORAM32_SEL) begin
 								DSP_ACCESS_32 <= 1;
@@ -921,7 +934,7 @@ module CLIO
 		else if (DSP_DIRECT_SEL)
 			case ({A[7:2],2'b00})
 				8'hD0: CPU_DO <= {12'b0000_0000_0000,DSP_SEMAPHORE_STAT,DSP_SEMAPHORE};
-				8'hF0: CPU_DO <= {16'h0000,DSP_NOISE[15:0]};
+				8'hF0: CPU_DO <= {16'h0000,DSP_NOISE};
 				8'hF4: CPU_DO <= {16'h0000,6'b000000,DSP_PC};
 				8'hF8: CPU_DO <= {16'h0000,DSP_NRC};
 				8'hFC: CPU_DO <= {31'h00000000,DSP_GW};
@@ -1083,14 +1096,27 @@ module CLIO
 		.RD(DSP_EORAM_DO)
 	);
 	
-	wire DSP_NOISE_OE = (DSP_EI_ADDR == 8'hEA);					//0x0EA
+	wire NOISE_OE = (DSP_EI_ADDR == 8'hEA);					//0x0EA
 	always @(posedge CLK or negedge RST_N) begin
+		bit  [16: 0] NOISE_NEW;
+		
 		if (!RST_N) begin
-			DSP_NOISE <= 17'h00001;
+			NOISE <= 17'h00001;
 		end
-		else if (EN && DSP_EN && CE_R) begin
-			if (DSP_NOISE_OE) begin
-				DSP_NOISE <= {DSP_NOISE[5]^DSP_NOISE[0],DSP_NOISE[16:1]};
+		else if (EN && CE_R) begin
+			NOISE_NEW = {NOISE[5]^NOISE[0],NOISE[16:1]};
+			
+			if (DSP_EN) begin
+				if (NOISE_OE) begin
+					NOISE <= NOISE_NEW;
+				end
+			end
+			
+			if (IO_EN) begin
+				if (DSP_NOISE_RD) begin
+					DSP_NOISE <= NOISE[15:0];
+					NOISE <= NOISE_NEW;
+				end
 			end
 		end
 	end
@@ -1278,16 +1304,16 @@ module CLIO
 											  {EOFIFO_COUNT[3]}};
 											  
 	bit          EIFIFO_OE_LATCH[13];
-	bit          EOFIFO_WE_LATCH[4];
+//	bit          EOFIFO_WE_LATCH[4];
 	wire EIFIFO_BUF_WE = (DSP_ADDR[7:0] >= 9'h070 && DSP_ADDR[7:0] <= 9'h07E && DSP_EIRAM_WE);//0x070-0x07E
 	bit  [15: 0] EIFIFO_BUF[13];
-	bit          EIFIFO_BUF_EMPTY[13];
+//	bit          EIFIFO_BUF_EMPTY[13];
 	always @(posedge CLK or negedge RST_N) begin
 		if (!RST_N) begin
 			EIFIFO_OE_LATCH <= '{13{0}};
-			EOFIFO_WE_LATCH <= '{4{0}};
+//			EOFIFO_WE_LATCH <= '{4{0}};
 			EIFIFO_BUF <= '{13{'0}};
-			EIFIFO_BUF_EMPTY <= '{13{0}};
+//			EIFIFO_BUF_EMPTY <= '{13{0}};
 		end
 		else if (EN && CE_R) begin
 			if (DSP_EN) begin
@@ -1304,20 +1330,20 @@ module CLIO
 				EIFIFO_OE_LATCH[10] <= EIFIFO10_OE;
 				EIFIFO_OE_LATCH[11] <= EIFIFO11_OE;
 				EIFIFO_OE_LATCH[12] <= EIFIFO12_OE;
-				EOFIFO_WE_LATCH[ 0] <= EOFIFO0_WE;
-				EOFIFO_WE_LATCH[ 1] <= EOFIFO1_WE;
-				EOFIFO_WE_LATCH[ 2] <= EOFIFO2_WE;
-				EOFIFO_WE_LATCH[ 3] <= EOFIFO3_WE;
+//				EOFIFO_WE_LATCH[ 0] <= EOFIFO0_WE;
+//				EOFIFO_WE_LATCH[ 1] <= EOFIFO1_WE;
+//				EOFIFO_WE_LATCH[ 2] <= EOFIFO2_WE;
+//				EOFIFO_WE_LATCH[ 3] <= EOFIFO3_WE;
 				
 				if ((EIFIFO_OE || EIFIFO_OE2) && DSP_EI_OE) begin
 					EIFIFO_BUF[DSP_EI_ADDR[3:0]] <= EIFIFO_Q[DSP_EI_ADDR[3:0]];
-					EIFIFO_BUF_EMPTY[DSP_EI_ADDR[3:0]] <= 1;
+//					EIFIFO_BUF_EMPTY[DSP_EI_ADDR[3:0]] <= 1;
 				end
 			end
 			if (IO_EN) begin
 				if (EIFIFO_BUF_WE) begin
 					EIFIFO_BUF[DSP_ADDR[3:0]] <= DSP_DI;
-					EIFIFO_BUF_EMPTY[DSP_ADDR[3:0]] <= 0;
+//					EIFIFO_BUF_EMPTY[DSP_ADDR[3:0]] <= 0;
 				end
 			end
 		end
@@ -1385,7 +1411,7 @@ module CLIO
 						      EIFIFO_STAT_OE ? {12'b0000_0000_0000,EIFIFO_STAT[DSP_EI_ADDR[3:0]]} :
 						      EOFIFO_STAT_OE ? {12'b0000_0000_0000,EOFIFO_STAT[DSP_EI_ADDR[1:0]]} :
 						      EIFIFO_OE || EIFIFO_OE2 ? EIFIFO_BUF[DSP_EI_ADDR[3:0]] :
-								DSP_NOISE_OE ? DSP_NOISE[15:0] :
+								NOISE_OE ? NOISE[15:0] :
 						      AUDLOCK_OE ? {AUDLOCK,15'b000_0000_0000_0000} :
 						      SEMASTAT_OE ? {12'b0000_0000_0000,DSP_SEMAPHORE_STAT} :
 						      SEMAPHORE_OE ? DSP_SEMAPHORE :
