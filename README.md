@@ -7,7 +7,7 @@ Current status is WIP/Beta
 Known issues:
 - Olympic Soccer (US): polygon glitch (vertically crossed polygons)
 - PGA Tour 96 (US): polygon glitch (vertically crossed polygons)
-- Road & Track Presents - The Need for Speed (US,EU): slowdown
+- Road & Track Presents - The Need for Speed (US,EU): polygon glitch (vertically crossed polygons), slowdown
 - Total Eclipse (US): polygon glitch (vertically crossed polygons)
 
 
